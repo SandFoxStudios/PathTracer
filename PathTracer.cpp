@@ -42,6 +42,14 @@ struct Ray
 };
 const float Ray::epsilon = 1e-3f;
 
+struct Material
+{
+	enum { LAMBERT, METAL, DIELECTRIC };
+	float r, g, b;
+	int type;
+	float param; // metal(1)=fuzz, dieletric(2)=ior
+};
+
 struct HitRecord
 {
 	vec3 point; float t;
@@ -59,9 +67,10 @@ struct Sphere
 		// to is in object space
 		float3 to = ray.origin - center;
 		float A = ray.direction.dot(ray.direction);
-		float B = 2.f * to.dot(ray.direction);
+		float B = to.dot(ray.direction);
 		float C = to.dot(to) - radius*radius;
 #if 0
+		B *= 2.f;
 		// pbrt
 		float discriminant = B*B - 4.f*A*C;
 		if (discriminant > 0.f) {
@@ -87,8 +96,7 @@ struct Sphere
 
 		}
 #else
-		// glassner:
-		B /= 2.0f;
+		// shirley (optimized):
 		float discriminant = B*B - A*C;
 		if (discriminant > 0.f) {
 			float rootDiscriminant = sqrtf(discriminant);
@@ -184,20 +192,6 @@ struct Camera
 	}
 };
 
-float nextFloat(float min, float max)
-{
-	return min + ((float)rand() / (float)RAND_MAX) * (max - min);
-}
-
-
-
-struct Material
-{
-	float r, g, b;
-	int type;
-	float param; // metal(1)=fuzz, dieletric(2)=ior
-};
-
 struct Scene
 {
 	std::vector<Sphere> spheres;
@@ -206,6 +200,18 @@ struct Scene
 
 	vec3 color(Ray& ray, Scene& scene, int depth);
 };
+
+// ---
+
+float nextFloat(float min, float max)
+{
+	return min + ((float)rand() / (float)RAND_MAX) * (max - min);
+}
+
+float mix(float a, float b, float t)
+{
+	return a*(1.f - t) + b*t;
+}
 
 vec3 randomDirectionInUnitSphere()
 {
@@ -225,61 +231,130 @@ vec3 randomDirectionInHemisphere(const vec3& N)
 	} while (p.sqrLength() >= 1.0f && N.dot(p) < 0.f);
 	return p;
 }
+vec3 randomDirectionOnHemisphere(const vec3& N)
+{
+	vec3 p;
+	do {
+		p = vec3(nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.0f), nextFloat(0.0f, 1.0f)) * 2.0f - vec3(1.f, 1.f, 1.f);
+	} while (p.sqrLength() >= 1.0f && N.dot(p) < 0.f);
+	return p.normalize();
+}
 
-bool scatter(const Material& mat, const vec3& position, const vec3& direction, const vec3& N, Ray& scattered, vec3& attenuation)
+bool scatter(const Material& mat, const vec3& position, const vec3& direction, const vec3& N, Ray& scattered, vec3& attenuation, float& pdf)
 {
 	scattered.origin = position;
-	scattered.mint = 0.f; 
+	scattered.mint = 0.001f; 
 	scattered.maxt = FLT_MAX;
-	if (mat.type == 0) {
+
+	float NdotL = -N.z;
+	//if (NdotL > 0.f)
+	// Lambert, next event estimation (emission)
+	//emission = vec3(mat.r * NdotL, mat.g * NdotL, mat.b * NdotL);
+
+	pdf = (M_1_PI * NdotL);// 1.f / (0.5f * M_1_PI);
+
+	if (mat.type == Material::LAMBERT)
+	{
+
+		//return false;
+		
 		scattered.direction = (position + N + randomDirectionInHemisphere(N)) - position;
-		// Lambert
-		//float NdotL = -N.z;
-		attenuation = vec3(mat.r, mat.g, mat.b);// * NdotL;
+
+		// BRDF
+		NdotL = N.dot(scattered.direction);
+		
+		attenuation = vec3(mat.r, mat.g, mat.b) ;// *pdf);
+		
+		//scattered.origin += N*0.001f;
 		return true;
 	}
-	else if (mat.type == 1) {
-		vec3 V = direction; 
-		//V.normalize();
-		float NdotV = V.dot(N);
-		vec3 R = V - N*(2.f*NdotV);
-		scattered.direction = R;
-		// pseudo Phong
-		//float VdotR = R.dot(-V);
-		//float specular = saturate(pow(VdotR, 8.f));		
-		attenuation = vec3(mat.r, mat.g, mat.b);// *specular;
-		return N.dot(R) > 0.f;
-	}
-	else {
+	else if (mat.type == Material::METAL) 
+	{	
+		
 		vec3 V = direction;
 		//V.normalize();
-		float NdotV = V.dot(N);
-		vec3 R = V - N*(2.f*NdotV);
-		scattered.direction = R;
-		// dielectric / refractive
-		attenuation = vec3(1.f, 1.f, 1.f);
-
-		// refract
+		
 		vec3 outN = N;
+		/*float NdotV = V.dot(N);
 		if (NdotV > 0.0f) {
 			outN = -N;
+		}*/
+
+		vec3 R = V - outN*(2.f*V.dot(N));
+		R.normalize();
+		scattered.direction = (R);// +randomDirectionInUnitSphere()*0.1f).normalize();
+
+		// Lambert, next event estimation (emission)
+		//emission = vec3(mat.r * NdotL, mat.g * NdotL, mat.b * NdotL);
+		// pseudo Phong
+		//float VdotR = R.dot(-V);
+		//float specular = saturate(pow(VdotR, 8.f));
+
+		attenuation = vec3(mat.r, mat.g, mat.b);// * NdotL;
+		
+		//scattered.origin += outN*0.001f;
+		return N.dot(scattered.direction) > 0.f;
+	}
+	else {
+		
+		float peta = mat.param;
+		float eta = peta;
+
+		vec3 V = direction;
+
+		float NdotV = V.dot(N);
+		//float fresnelRatio = mix(powf(1.0f - NdotV, 5.f), 1.0, 0.1);
+
+		vec3 outN = N;
+		float cosine = -NdotV / V.length();
+		if (NdotV > 0.0f) {
+			outN = -N;
+			cosine *= -peta;
 		}
 		else {
-		
+			eta = 1.0f / peta;
 		}
 
+		// Reflect
+		vec3 R = V - outN*(2.f*V.dot(outN));
+		R.normalize();
+		scattered.direction = R;
+
+		// dielectric / refractive
+		attenuation = /*vec3(mat.r, mat.g, mat.b);*/ vec3(1.f, 1.f, 1.f);
+
+		float reflect_prob = 1.0f;
+
+		// refract
 		float NdotOV = V.dot(outN);
-		float discriminant = 1.0f - mat.param*mat.param*(1.0f - NdotOV*NdotOV);
-		vec3 refracted{ 0.f, 0.f, 0.f };
+		vec3 refracted;
+		float discriminant = 1.0f - eta*eta*(1.0f - NdotOV*NdotOV);
 
 		if (discriminant > 0.0f) {
-			refracted = (V - N*NdotV)*mat.param - N*sqrtf(discriminant);
+			// schlick-fresnel
+			float r0 = (1.f - peta) / (1.f + peta);
+			r0 *= r0;
+			reflect_prob = r0 + (1.f - r0)*powf(1.0f - cosine, 5.0f);
+
+			
 			//scattered.direction = refracted;
+			//scattered.origin += outN*-0.001f;
+			//return true;
+		}
+
+		if (nextFloat(0.f, 1.f) < reflect_prob) {
+			//scattered.origin += outN*0.001f;
+		}
+		else {
+			refracted = (V - outN*NdotOV)*eta - outN*sqrtf(discriminant);
+			refracted.normalize();
+			scattered.direction = refracted;
+			//scattered.origin += outN*-0.001f;
 		}
 
 		return true;
 	}
-	
+	return false;
 }
 
 vec3 Scene::color(Ray& ray, Scene& scene, int depth)
@@ -291,12 +366,15 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth)
 	// get closest hit
 	for (auto& sphere : scene.spheres)
 	{
-		if (sphere.hit(ray, rec)) 
-		{
-			//ray.maxt = rec.point.z;
-			ray.maxt = rec.t;
-			hitIndex = index;
-		}
+		Material& mat = scene.materials[index];
+		//if (mat.type != Material::METAL) {
+			if (sphere.hit(ray, rec))
+			{
+				//ray.maxt = rec.point.z;
+				ray.maxt = rec.t;
+				hitIndex = index;
+			}
+		//}
 		++index;
 	}
 
@@ -305,21 +383,41 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth)
 		vec3 N = rec.normal;
 		Material& mat = scene.materials[hitIndex];
 		vec3 attenuation;
+		vec3 emission(0.f, 0.f, 0.f);
 		Ray scattered;
-		if (depth < 10 && scatter(mat, rec.point, ray.direction, rec.normal, scattered, attenuation))
-		{
-			// recurse depending on material
-			return attenuation * color(scattered, scene, depth + 1);
+		
+		
+		bool inShadow = false;
+		if (-N.z > 0.f) {
+			HitRecord shadowRec;
+			Ray shadowRay = {rec.point, vec3(0.f,0.f,-1.f), 0.001f, FLT_MAX };
+			for (auto& sphere : scene.spheres)
+			{
+				if (sphere.hit(shadowRay, shadowRec))
+				{
+					inShadow = true;
+					break;
+				}
+			}
 		}
-		//else // fake emissive
-		//	return vec3(1.0f, 1.0f, 1.0f);
+
+		float pdf;
+		if (depth < 5 && scatter(mat, rec.point, ray.direction, rec.normal, scattered, attenuation, pdf))
+		{
+			if (-N.z > 0.f && !inShadow)
+				emission = vec3(mat.r, mat.g, mat.b)*M_1_PI;
+			// recurse depending on material
+			return emission + attenuation * color(scattered, scene, depth + 1);
+		}
+		else // fake emissive
+			return emission;
 	}
 	else {
-		// ambient sky light
+		// terminal ray: ambient sky light
 		vec3 dir = ray.direction;
 		float t = 0.5f * (dir.y + 1.0f);
-		
-		return vec3(1.0f, 1.0f, 1.0f)*t;// +vec3(0.0f, 1.0f, 0.0f) * (1.f - t);
+
+		return vec3(1.0f, 1.0f, 1.0f)*(1.0 - t);/// +vec3(0.5f, 0.7f, 1.0f) * (t);
 	}
 
 	return vec3(0.0f, 0.0f, 0.0f);
@@ -346,19 +444,20 @@ int main(void)
 
 	scene.materials.reserve(10);
 	for (int i = 0; i < 10; i++) {
-		int id = 0;
+		int id = Material::LAMBERT;
 		float param = 0.0f;
 		if (i == 7) {
-			id = 2;
+			id = Material::DIELECTRIC;
 			param = 1.5f;
 		}
-		else
-		if (i < 7) {
-			param = 0.0f;
-		}
-		else { 
-			id = 1;
-			param = 0.0f;
+		else {
+			if (i < 7) {
+				param = 0.0f;
+			}
+			else {
+				id = Material::METAL;
+				param = 0.0f;
+			}
 		}
 		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), id, param });
 	}
@@ -376,10 +475,11 @@ int main(void)
 			Pixel pixel{ i, j, {0, 0, 0, 255} };
 			vec3 color(0.0f, 0.0f, 0.0f);
 #if 1
-			const int numSamples = 10;
+			const int numSamples = 16;
 			for (int s = 0; s < numSamples; s++)
 			{
-				Ray ray = scene.camera.generateRay(float(i) + nextFloat(0.f, 1.f), float(j) + nextFloat(0.f, 1.f));
+				float sx = 0.25f*(s % 4), sy = 0.25f*(s / 4);
+				Ray ray = scene.camera.generateRay(float(i) + sx*nextFloat(0.f, 1.f), float(j) + sy*nextFloat(0.f, 1.f));
 
 				/*HitRecord rec;
 				int index = 0;
