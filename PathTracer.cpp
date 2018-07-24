@@ -10,6 +10,11 @@
 #include "TGA.h"
 #include "Framebuffer.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NO_MIN_MAX
+#include <windows.h>
+#endif
 
 struct float3
 {
@@ -198,7 +203,7 @@ struct Scene
 	std::vector<Material> materials;
 	Camera camera;
 
-	vec3 color(Ray& ray, Scene& scene, int depth);
+	vec3 color(Ray& ray, Scene& scene, int depth, uint64_t& rayCount);
 };
 
 // ---
@@ -239,6 +244,15 @@ vec3 randomDirectionOnHemisphere(const vec3& N)
 	} while (p.sqrLength() >= 1.0f && N.dot(p) < 0.f);
 	return p.normalize();
 }
+vec3 randomUnitVector()
+{
+	float z = nextFloat(0.0f, 1.0f) * 2.f - 1.f;
+	float a = nextFloat(0.0f, 1.0f) * 2.f - M_PI;
+	float r = sqrtf(1.f - z*z);
+	float x = cos(a) * r;
+	float y = sin(a) * r;
+	return vec3(x, y, z);
+}
 
 bool scatter(const Material& mat, const vec3& position, const vec3& direction, const vec3& N, Ray& scattered, vec3& attenuation, float& pdf)
 {
@@ -251,14 +265,15 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 	// Lambert, next event estimation (emission)
 	//emission = vec3(mat.r * NdotL, mat.g * NdotL, mat.b * NdotL);
 
-	pdf = (M_1_PI * NdotL);// 1.f / (0.5f * M_1_PI);
+	//pdf = (M_1_PI * NdotL);// 1.f / (0.5f * M_1_PI);
 
 	if (mat.type == Material::LAMBERT)
 	{
 
 		//return false;
 		
-		scattered.direction = (position + N + randomDirectionInHemisphere(N)) - position;
+		scattered.direction = (position + N + randomUnitVector()) - position;
+		scattered.direction.normalize();
 
 		// BRDF
 		NdotL = N.dot(scattered.direction);
@@ -280,9 +295,9 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 			outN = -N;
 		}*/
 
-		vec3 R = V - outN*(2.f*V.dot(N));
+		vec3 R = V - outN*(2.f*V.dot(outN));
 		R.normalize();
-		scattered.direction = (R);// +randomDirectionInUnitSphere()*0.1f).normalize();
+		scattered.direction = (R);// +randomDirectionInUnitSphere()/**0.1f*/).normalize();
 
 		// Lambert, next event estimation (emission)
 		//emission = vec3(mat.r * NdotL, mat.g * NdotL, mat.b * NdotL);
@@ -303,10 +318,9 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		vec3 V = direction;
 
 		float NdotV = V.dot(N);
-		//float fresnelRatio = mix(powf(1.0f - NdotV, 5.f), 1.0, 0.1);
 
 		vec3 outN = N;
-		float cosine = -NdotV / V.length();
+		float cosine = -NdotV;// / V.length();
 		if (NdotV > 0.0f) {
 			outN = -N;
 			cosine *= -peta;
@@ -316,9 +330,9 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		}
 
 		// Reflect
-		vec3 R = V - outN*(2.f*V.dot(outN));
-		R.normalize();
-		scattered.direction = R;
+		vec3 reflected = V - outN*(2.f*V.dot(outN));
+		reflected.normalize();
+		
 
 		// dielectric / refractive
 		attenuation = /*vec3(mat.r, mat.g, mat.b);*/ vec3(1.f, 1.f, 1.f);
@@ -327,27 +341,29 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 
 		// refract
 		float NdotOV = V.dot(outN);
-		vec3 refracted;
+		vec3 refracted(0.f, 0.f, 0.f);;
 		float discriminant = 1.0f - eta*eta*(1.0f - NdotOV*NdotOV);
 
-		if (discriminant > 0.0f) {
+		if (discriminant > 0.0f) 
+		{
 			// schlick-fresnel
 			float r0 = (1.f - peta) / (1.f + peta);
 			r0 *= r0;
 			reflect_prob = r0 + (1.f - r0)*powf(1.0f - cosine, 5.0f);
 
-			
 			//scattered.direction = refracted;
 			//scattered.origin += outN*-0.001f;
 			//return true;
+			refracted = (V - outN*NdotOV)*eta - outN*sqrtf(discriminant);
+			refracted.normalize();
 		}
 
 		if (nextFloat(0.f, 1.f) < reflect_prob) {
 			//scattered.origin += outN*0.001f;
+			scattered.direction = reflected;
 		}
 		else {
-			refracted = (V - outN*NdotOV)*eta - outN*sqrtf(discriminant);
-			refracted.normalize();
+
 			scattered.direction = refracted;
 			//scattered.origin += outN*-0.001f;
 		}
@@ -357,12 +373,12 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 	return false;
 }
 
-vec3 Scene::color(Ray& ray, Scene& scene, int depth)
+vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 {
 	HitRecord rec;
 	int hitIndex = -1;
 	int index = 0;
-
+	rayCount++;
 	// get closest hit
 	for (auto& sphere : scene.spheres)
 	{
@@ -388,7 +404,9 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth)
 		
 		
 		bool inShadow = false;
-		if (-N.z > 0.f) {
+		if (mat.type == Material::LAMBERT  && -N.z > 0.f)
+		{
+			rayCount++;
 			HitRecord shadowRec;
 			Ray shadowRay = {rec.point, vec3(0.f,0.f,-1.f), 0.001f, FLT_MAX };
 			for (auto& sphere : scene.spheres)
@@ -402,12 +420,12 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth)
 		}
 
 		float pdf;
-		if (depth < 5 && scatter(mat, rec.point, ray.direction, rec.normal, scattered, attenuation, pdf))
+		if (depth < 10 && scatter(mat, rec.point, ray.direction, rec.normal, scattered, attenuation, pdf))
 		{
-			if (-N.z > 0.f && !inShadow)
-				emission = vec3(mat.r, mat.g, mat.b)*M_1_PI;
+			if (mat.type==Material::LAMBERT && -N.z > 0.f && !inShadow)
+				emission = vec3(mat.r, mat.g, mat.b)*-N.z;// *2.f;// *M_1_PI;
 			// recurse depending on material
-			return emission + attenuation * color(scattered, scene, depth + 1);
+			return emission + attenuation * color(scattered, scene, depth + 1, rayCount);
 		}
 		else // fake emissive
 			return emission;
@@ -466,6 +484,9 @@ int main(void)
 
 	srand(2 ^ 24 - 1);
 
+	LARGE_INTEGER t1, t2;
+	QueryPerformanceCounter(&t1);
+	uint64_t totalRayCount = 0;
 	Color* colorBuffer = (Color*)fb.colorBuffer;
 	//for (int j = fb.height - 1; j >= 0; j--)
 	for (int j = 0; j < fb.height; j++)
@@ -475,10 +496,10 @@ int main(void)
 			Pixel pixel{ i, j, {0, 0, 0, 255} };
 			vec3 color(0.0f, 0.0f, 0.0f);
 #if 1
-			const int numSamples = 16;
+			const int numSamples = 4;// 256;
 			for (int s = 0; s < numSamples; s++)
 			{
-				float sx = 0.25f*(s % 4), sy = 0.25f*(s / 4);
+				float sx = 1.f/*0.25f*(s % 4)*/, sy = 1.f/*0.25f*(s / 4)*/;
 				Ray ray = scene.camera.generateRay(float(i) + sx*nextFloat(0.f, 1.f), float(j) + sy*nextFloat(0.f, 1.f));
 
 				/*HitRecord rec;
@@ -507,7 +528,8 @@ int main(void)
 					}
 					++index;
 				}*/
-				color += scene.color(ray, scene, 0);
+				color += scene.color(ray, scene, 0, totalRayCount);
+				//totalRayCount++;
 			}
 			color *= (1.f/float(numSamples));
 #else
@@ -519,6 +541,15 @@ int main(void)
 			*colorBuffer++ = pixel.color;
 		}
 	}
+
+	QueryPerformanceCounter(&t2);
+	uint64_t dt = t2.QuadPart - t1.QuadPart;
+	LARGE_INTEGER freq;
+	QueryPerformanceFrequency(&freq);
+	double seconds = double(dt) / double(freq.QuadPart);
+	char buffer[512];
+	sprintf(buffer, "%.2fms (%.1f FPS) %.1fMrays/sec %.2fMRays/frame\n", seconds*1000.f, 1.0f / seconds, totalRayCount / seconds * 1.0e-6f, totalRayCount * 1.0e-6f);
+	OutputDebugStringA(buffer);
 
 	for (int b = 0; b < 0; b++) {
 		for (int j = 1; j < fb.height; j++)

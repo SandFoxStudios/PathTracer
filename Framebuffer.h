@@ -13,11 +13,21 @@ struct Color
 {
 	uint8_t R, G, B, A;
 
-	void fromLinear(float r, float g, float b) {
+	/*void fromLinear(float r, float g, float b) {
 		float sRGB = 1.0f / 2.2f;
 		R = uint8_t(255.99f * pow(saturate(r), sRGB));
 		G = uint8_t(255.99f * pow(saturate(g), sRGB));
 		B = uint8_t(255.99f * pow(saturate(b), sRGB));
+		A = 255;
+	}*/
+	inline float toSRGB(float x) { return  1.055f * pow(x, 0.416666667) - 0.055f; }
+	void fromLinear(float r, float g, float b) {
+		float x = toSRGB(r > 0.0f ? r : 0.0f);
+		float y = toSRGB(g > 0.0f ? g : 0.0f);
+		float z = toSRGB(b > 0.0f ? b : 0.0f);
+		R = uint8_t(255.99f * saturate(x));
+		G = uint8_t(255.99f * saturate(y));
+		B = uint8_t(255.99f * saturate(z));
 		A = 255;
 	}
 };
