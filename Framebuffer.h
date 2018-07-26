@@ -20,14 +20,14 @@ struct Color
 		B = uint8_t(255.99f * pow(saturate(b), sRGB));
 		A = 255;
 	}*/
-	inline float toSRGB(float x) { return  1.055f * pow(x, 0.416666667) - 0.055f; }
-	void fromLinear(float r, float g, float b) {
-		float x = toSRGB(r > 0.0f ? r : 0.0f);
-		float y = toSRGB(g > 0.0f ? g : 0.0f);
-		float z = toSRGB(b > 0.0f ? b : 0.0f);
-		R = uint8_t(255.99f * saturate(x));
-		G = uint8_t(255.99f * saturate(y));
-		B = uint8_t(255.99f * saturate(z));
+	inline float toSRGB(float x) { return sqrtf(x); /*return 1.055f * powf(x, 0.416666667f) - 0.055f;*/ }
+	inline void fromLinear(float r, float g, float b) {
+		float x = toSRGB(r);
+		float y = toSRGB(g);
+		float z = toSRGB(b);
+		R = uint8_t(255.49f * saturate(x));
+		G = uint8_t(255.49f * saturate(y));
+		B = uint8_t(255.49f * saturate(z));
 		A = 255;
 	}
 };
