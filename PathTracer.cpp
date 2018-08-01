@@ -34,7 +34,7 @@ struct float3
 	inline float3& operator+=(const float3& rhs) { x += rhs.x; y += rhs.y; z += rhs.z; return *this; }
 	inline float sqrLength() const { return x * x + y * y + z * z; }
 	inline float length() const { return sqrtf(x * x + y * y + z * z); }
-	inline float3& normalize() { operator*(1.f / length()); return *this; }
+	inline float3& normalize() { operator*=(1.f / length()); return *this; }
 	inline float dot(const float3& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z; }
 	inline float3 cross(const float3& rhs) const { return float3(y*rhs.z - z*rhs.y, z*rhs.x - x*rhs.z, x*rhs.y - y*rhs.x); }	
 };
@@ -66,25 +66,42 @@ struct HitRecord
 
 	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c)
 	{
-		vec3 ab = b - a;
-		vec3 ac = c - a;
-		vec3 n = ab.cross(ac);
-		float d = n.dot(ray.direction);
-		if (d < 0.f)
+		vec3 e1 = b - a;
+		vec3 e2 = c - a;
+        // Left Handed, reverse determinant
+		vec3 n = e1.cross(e2);
+		float det = -n.dot(ray.direction);
+        vec3 q = ray.direction.cross(e2);
+        //float det = e1.dot(q);
+        
+        //if (det < 0.0001f)
+		if (abs(det) < 0.0001f)
 			return false;
-		vec3 ap = ray.origin - a;
+        
+		vec3 ap = (ray.origin - a);
+        // backface culling
 		float temp = n.dot(ap);
 		if (temp < 0.f)
 			return false;
 		
-		vec3 e = ray.direction.cross(ap);
-		float v = e.dot(ac);
-		if (v < 0.f || v > d)
+		/*vec3 e = ray.direction.cross(ap);
+		float v = e.dot(e2);
+		if (v < 0.f || v > det)
 			return false;
-		float w = -e.dot(ab);
-		if (w < 0.f || (v+w) > d)
-			return false;
-		float ood = 1.f / d;
+		float w = -e.dot(e1);
+		if (w < 0.f || (v+w) > det)
+			return false;*/
+        
+        //vec3 q = ray.direction.cross(e2);
+        float v = ap.dot(q);
+        if (v < 0.f || v > det)
+            return false;
+        vec3 r = ap.cross(e1);
+        float w = ray.direction.dot(r);
+        if (w < 0.f || (v+w) > det)
+            return false;
+        
+		float ood = 1.f / det;
 		
 		t = temp * ood;
 		point = ray(t);
@@ -125,7 +142,7 @@ struct AABB
 	{
 		float tmin = ray.mint, tmax = ray.maxt;
 		for (int i = 0; i < 3; i++) {
-			if (abs(ray.direction[i]) < 0.001f) {
+			if (abs(ray.direction[i]) < 0.0001f) {
 				if (ray.origin[i] < min[i] || ray.origin[i] > max[i])
 					return false;
 			}
@@ -154,7 +171,7 @@ struct Mesh
 	bool hit(Ray ray, HitRecord &rec) const
 	{
 		bool hasHit = false;
-		return bounds.hit(ray, rec);
+		//return bounds.hit(ray, rec);
 		if (bounds.test(ray))
 		{
 			int numTri = indices.size() / 3;
@@ -417,14 +434,14 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 
 		vec3 R = V - outN*(2.f*V.dot(outN));
 		//R.normalize();
-		scattered.direction = (R);// +randomDirectionInUnitSphere()).normalize();
+        scattered.direction = (R);// + randomDirectionInUnitSphere()).normalize();
 
 		attenuation = vec3(mat.r, mat.g, mat.b);// * NdotL;
 		
 		//scattered.origin += outN*0.001f;
 		return N.dot(scattered.direction) > 0.f;
 	}
-	/*else {
+	else {
 		
 		float peta = mat.param;
 		float eta = peta;
@@ -445,9 +462,8 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 
 		// Reflect
 		vec3 reflected = V - outN*(2.f*V.dot(outN));
-		reflected.normalize();
+		//reflected.normalize();
 		
-
 		// dielectric / refractive
 		//attenuation = vec3(mat.r, mat.g, mat.b);
 		attenuation = vec3(1.f, 1.f, 1.f);
@@ -484,7 +500,7 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		}
 
 		return true;
-	}*/
+	}
 	return false;
 }
 
@@ -495,7 +511,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 	int index = 0;
 	rayCount++;
 	// get closest hit
-	/*for (auto& sphere : scene.spheres)
+	for (auto& sphere : scene.spheres)
 	{
 		//Material& mat = scene.materials[index];
 		//if (mat.type != Material::METAL) {
@@ -508,7 +524,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 		//}
 		++index;
 	}
-	*/
+	
 	for (auto& mesh : scene.meshes)
 	{
 		Material& mat = scene.materials[0];
@@ -517,7 +533,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 		{
 			//ray.maxt = rec.point.z;
 			ray.maxt = rec.t;
-			hitIndex = index;
+			hitIndex = 0;
 		}
 		//}
 		++index;
@@ -535,7 +551,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 		bool inShadow = false;
 		if (mat.type == Material::LAMBERT && -N.z > 0.f)
 		{
-			rayCount++;
+			/*rayCount++;
 			HitRecord shadowRec;
 			Ray shadowRay = {rec.point, vec3(0.f,0.f,-1.f), 0.001f, FLT_MAX };
 			for (auto& sphere : scene.spheres)
@@ -545,7 +561,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 					inShadow = true;
 					break;
 				}
-			}
+			}*/
 			
 			const float sunSize = 0.53f;
 			const float sunAngularDiameterCos = cos(sunSize*M_PI / 180.0);
@@ -586,13 +602,15 @@ int main(void)
 	// initialize ---
 
 	Framebuffer fb;
-	fb.create(1280, 720);
+    fb.create(1280, 720);
 
 	Scene scene;
 	
 	scene.camera.position = float3(0.f, 0.f, 0.f);
 	scene.camera.initialize(60.f, 0.5f, 100.f, fb.width, fb.height);
 
+    srand(2 ^ 17 - 1);
+    
 	scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
@@ -604,7 +622,7 @@ int main(void)
 		float param = 0.0f;
 		if (i == 7) {
 			id = Material::DIELECTRIC;
-			param = 1.5f;
+			param = 1.55f;
 		}
 		else {
 			if (i < 7) {
@@ -619,7 +637,7 @@ int main(void)
 	}
 
 	scene.meshes.reserve(1);
-	scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 1.f, -1.f, 5.f }, vec3{ 0.f, 1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
+	scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
 
 	// main loop ---
 
