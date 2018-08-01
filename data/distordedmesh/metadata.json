@@ -1,0 +1,88 @@
+{
+"sourceFormat": "skp",
+"sourceSoftware": "Sketchup",
+"sourceFormatVersion": "Sketchup 14.1.1282",
+"dataSkp": {
+	"modelGlobals": {
+		"pov": {
+			"pos": [
+				1.9669567861390418,
+				3.3086221084215164,
+				-6.5134098500028283
+			],
+			"dir": [
+				1.0268906217964928,
+				2.0682339983907125,
+				-2.9640585202238836
+			],
+			"up": [
+				-0.0020813307826205,
+				0.0240639628879108,
+				0.007858355572419
+			]
+		},
+		"shadowSettings": {
+			"hasShadows": true,
+			"City": "Boulder (CO)",
+			"Country": "USA",
+			"Dark": 45,
+			"DayOfYear": 312,
+			"DaylightSavings": false,
+			"DisplayNorth": false,
+			"DisplayOnAllFaces": true,
+			"DisplayOnGroundPlane": true,
+			"DisplayShadows": false,
+			"EdgesCastShadows": false,
+			"Latitude": 40.0183090000000021,
+			"Light": 80,
+			"Longitude": -105.2421389999999946,
+			"NorthAngle": 0.0,
+			"ShadowTime": 1415453400,
+			"ShadowTime_time_t": 1415453400,
+			"SunDirection": [
+				-0.4243758515119056,
+				0.4723621415336695,
+				-0.7725148179156638
+			],
+			"SunRise": 1415428994,
+			"SunRise_time_t": 1415428994,
+			"SunSet": 1415465157,
+			"SunSet_time_t": 1415465157,
+			"TZOffset": -7.0,
+			"UseSunForAllShading": false
+		},
+		"sectionPlane": {
+			"DisplaySectionPlanes": false,
+			"SectionActiveColor": [
+				255,
+				135,
+				0,
+				255
+			],
+			"SectionCutWidth": 3,
+			"SectionDefaultCutColor": [
+				0,
+				0,
+				0,
+				255
+			],
+			"SectionInactiveColor": [
+				112,
+				105,
+				97,
+				255
+			]
+		},
+		"geolocation": {
+			"latitude": 40.0183090000000021,
+			"longitude": -105.2421389999999946
+		},
+		"animation": {
+			"sceneTransitionEnabled": true,
+			"sceneTransitionDuration": 2.0,
+			"sceneDelay": 1.0,
+			"loop": true
+		}
+	}
+}
+}

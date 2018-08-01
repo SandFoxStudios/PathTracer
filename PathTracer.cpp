@@ -20,12 +20,16 @@
 #include <mach/mach_time.h>
 #endif
 
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
+
 struct float3
 {
 	float x, y, z;
 	inline float3() {}
-	inline float3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-	inline float operator[](int i) const { return (&x)[i]; }
+    inline float3(const float scalar) : x(scalar), y(scalar), z(scalar) {}
+	inline float3(const float _x, const float _y, const float _z) : x(_x), y(_y), z(_z) {}
+	inline float operator[](const int i) const { return (&x)[i]; }
 	inline float3 operator-() const { return float3(-x, -y, -z); }
 	inline float3 operator*(const float rhs) const { return float3(x * rhs, y * rhs, z * rhs); }
 	inline float3& operator*=(const float rhs) { x *= rhs; y *= rhs; z *= rhs; return *this; }
@@ -600,21 +604,63 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 int main(void)
 {
 	// initialize ---
-
-	Framebuffer fb;
+    Framebuffer fb;
     fb.create(1280, 720);
+    
+    Scene scene;
 
-	Scene scene;
+    // Load mesh
+    
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::string err;
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, "data/no_material.obj");
+    scene.meshes.reserve(1);
+    Mesh objMesh;
+    objMesh.bounds.min = vec3(FLT_MAX);
+    objMesh.bounds.max = vec3(-FLT_MAX);
+    objMesh.vertices.reserve(attrib.vertices.size()/3);
+    const float scale = 0.1f;
+    for (int i = 0; i < attrib.vertices.size(); i+=3) {
+        const float x = attrib.vertices[i*3]*scale;
+        const float y = attrib.vertices[i*3+1]*scale;
+        const float z = attrib.vertices[i*3+2]*scale + 1.5f;
+        objMesh.vertices.emplace_back(vec3(x, y, z));
+        if (x < objMesh.bounds.min.x) objMesh.bounds.min.x = x;
+        if (y < objMesh.bounds.min.y) objMesh.bounds.min.y = y;
+        if (z < objMesh.bounds.min.z) objMesh.bounds.min.z = z;
+        if (x > objMesh.bounds.max.x) objMesh.bounds.max.x = x;
+        if (y > objMesh.bounds.max.y) objMesh.bounds.max.y = y;
+        if (z > objMesh.bounds.max.z) objMesh.bounds.max.z = z;
+    }
+    for (auto &shape : shapes) {
+        for (int indices = 0; indices < shape.mesh.indices.size(); indices+=3) {
+            int a = shape.mesh.indices[indices].vertex_index;
+            int b = shape.mesh.indices[indices+1].vertex_index;
+            int c = shape.mesh.indices[indices+2].vertex_index;
+            objMesh.indices.push_back(a);
+            objMesh.indices.push_back(b);
+            objMesh.indices.push_back(c);
+        }
+        //for (auto& index : shape.mesh.indices) {
+        //    objMesh.indices.push_back(index.vertex_index);
+        //}
+    }
+    scene.meshes.emplace_back(objMesh);
+    //scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
+    
+
 	
 	scene.camera.position = float3(0.f, 0.f, 0.f);
 	scene.camera.initialize(60.f, 0.5f, 100.f, fb.width, fb.height);
 
     srand(2 ^ 17 - 1);
     
-	scene.spheres.reserve(10);
+	/*scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
-	}
+	}*/
 
 	scene.materials.reserve(10);
 	for (int i = 0; i < 10; i++) {
@@ -635,9 +681,6 @@ int main(void)
 		}
 		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), id, param });
 	}
-
-	scene.meshes.reserve(1);
-	scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
 
 	// main loop ---
 

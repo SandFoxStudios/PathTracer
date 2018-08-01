@@ -23,6 +23,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		82896508211226FD0020B074 /* tiny_obj_loader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tiny_obj_loader.h; sourceTree = "<group>"; };
 		829D3CA32109F6E000E459B0 /* PathTracer */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = PathTracer; sourceTree = BUILT_PRODUCTS_DIR; };
 		829D3CAD2109F71C00E459B0 /* TGA.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGA.h; sourceTree = SOURCE_ROOT; };
 		829D3CAE2109F71C00E459B0 /* PathTracer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PathTracer.cpp; sourceTree = SOURCE_ROOT; };
@@ -60,6 +61,7 @@
 		829D3CA52109F6E000E459B0 /* PathTracer */ = {
 			isa = PBXGroup;
 			children = (
+				82896508211226FD0020B074 /* tiny_obj_loader.h */,
 				82D870E5210A0ACA00BDB472 /* output.tga */,
 				829D3CB02109F73300E459B0 /* Framebuffer.h */,
 				829D3CAE2109F71C00E459B0 /* PathTracer.cpp */,
