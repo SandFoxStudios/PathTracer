@@ -63,6 +63,112 @@ struct HitRecord
 {
 	vec3 point; float t;
 	vec3 normal; int material;
+
+	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c)
+	{
+		vec3 ab = b - a;
+		vec3 ac = c - a;
+		vec3 n = ab.cross(ac);
+		float d = n.dot(ray.direction);
+		if (d < 0.f)
+			return false;
+		vec3 ap = ray.origin - a;
+		float temp = n.dot(ap);
+		if (temp < 0.f)
+			return false;
+		
+		vec3 e = ray.direction.cross(ap);
+		float v = e.dot(ac);
+		if (v < 0.f || v > d)
+			return false;
+		float w = -e.dot(ab);
+		if (w < 0.f || (v+w) > d)
+			return false;
+		float ood = 1.f / d;
+		
+		t = temp * ood;
+		point = ray(t);
+		normal = n.normalize();
+		return true;
+	}
+};
+
+struct AABB
+{
+	float3 min;
+	float3 max;
+
+	bool test(const Ray& ray) const
+	{
+		float tmin = ray.mint, tmax = ray.maxt;
+		for (int i = 0; i < 3; i++) {
+			if (abs(ray.direction[i]) < 0.001f) {
+				if (ray.origin[i] < min[i] || ray.origin[i] > max[i])
+					return false;
+			}
+			else {
+				float ood = 1.f / ray.direction[i];
+				float t1 = (min[i] - ray.origin[i]) * ood;
+				float t2 = (max[i] - ray.origin[i]) * ood;
+				if (t1 > t2) std::swap(t1, t2);
+				if (t1 > tmin) tmin = t1;
+				if (t2 < tmax) tmax = t2;
+				if (tmin > tmax)
+					return false;
+			}
+		}
+		return true;
+	}
+
+	// in world space
+	bool hit(const Ray& ray, HitRecord &rec) const
+	{
+		float tmin = ray.mint, tmax = ray.maxt;
+		for (int i = 0; i < 3; i++) {
+			if (abs(ray.direction[i]) < 0.001f) {
+				if (ray.origin[i] < min[i] || ray.origin[i] > max[i])
+					return false;
+			}
+			else {
+				float ood = 1.f / ray.direction[i];
+				float t1 = (min[i] - ray.origin[i]) * ood;
+				float t2 = (max[i] - ray.origin[i]) * ood;
+				if (t1 > t2) std::swap(t1, t2);
+				if (t1 > tmin) tmin = t1;
+				if (t2 < tmax) tmax = t2;
+				if (tmin > tmax)
+					return false;
+			}
+		}
+		rec.point = ray(tmin); rec.normal = (rec.point - (min+max) * 0.5f).normalize(); rec.t = tmin; return true;
+	}
+};
+
+struct Mesh
+{
+	std::vector<float3> vertices;
+	std::vector<int> indices;
+	AABB bounds;
+
+	// in world space
+	bool hit(Ray ray, HitRecord &rec) const
+	{
+		bool hasHit = false;
+		return bounds.hit(ray, rec);
+		if (bounds.test(ray))
+		{
+			int numTri = indices.size() / 3;
+			for (int i = 0; i < numTri; i++)
+			{
+				bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
+				if (ok) {
+					ray.maxt = rec.t;
+				}
+				hasHit |= ok;
+			}
+		}
+		return hasHit;
+	}
 };
 
 struct Sphere
@@ -205,6 +311,7 @@ struct Camera
 struct Scene
 {
 	std::vector<Sphere> spheres;
+	std::vector<Mesh> meshes;
 	std::vector<Material> materials;
 	Camera camera;
 
@@ -388,7 +495,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 	int index = 0;
 	rayCount++;
 	// get closest hit
-	for (auto& sphere : scene.spheres)
+	/*for (auto& sphere : scene.spheres)
 	{
 		//Material& mat = scene.materials[index];
 		//if (mat.type != Material::METAL) {
@@ -398,6 +505,20 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 				ray.maxt = rec.t;
 				hitIndex = index;
 			}
+		//}
+		++index;
+	}
+	*/
+	for (auto& mesh : scene.meshes)
+	{
+		Material& mat = scene.materials[0];
+		//if (mat.type != Material::METAL) {
+		if (mesh.hit(ray, rec))
+		{
+			//ray.maxt = rec.point.z;
+			ray.maxt = rec.t;
+			hitIndex = index;
+		}
 		//}
 		++index;
 	}
@@ -496,6 +617,9 @@ int main(void)
 		}
 		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), id, param });
 	}
+
+	scene.meshes.reserve(1);
+	scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 1.f, -1.f, 5.f }, vec3{ 0.f, 1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
 
 	// main loop ---
 
