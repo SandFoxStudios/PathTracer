@@ -67,26 +67,27 @@ struct HitRecord
 {
 	vec3 point; float t;
 	vec3 normal; int material;
+	vec3 uv;
 
 	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c)
 	{
 		vec3 e1 = b - a;
 		vec3 e2 = c - a;
-        // Left Handed, reverse determinant
-		vec3 n = e1.cross(e2);
-		float det = -n.dot(ray.direction);
+
+		// Left Handed, reverse determinant
+		//float det = -n.dot(ray.direction);
         vec3 q = ray.direction.cross(e2);
-        //float det = e1.dot(q);
+        float det = e1.dot(q);
         
-        //if (det < 0.0001f)
-		if (abs(det) < 0.0001f)
+        if (det < 0.0001f)
+		//if (abs(det) < 0.0001f)
 			return false;
         
 		vec3 ap = (ray.origin - a);
         // backface culling
-		float temp = n.dot(ap);
-		if (temp < 0.f)
-			return false;
+		//float temp = n.dot(ap);
+		//if (temp < 0.f)
+		//	return false;
 		
 		/*vec3 e = ray.direction.cross(ap);
 		float v = e.dot(e2);
@@ -97,20 +98,26 @@ struct HitRecord
 			return false;*/
         
         //vec3 q = ray.direction.cross(e2);
-        float v = ap.dot(q);
-        if (v < 0.f || v > det)
+        float u = ap.dot(q);
+        if (u < 0.f || u > det)
             return false;
         vec3 r = ap.cross(e1);
-        float w = ray.direction.dot(r);
-        if (w < 0.f || (v+w) > det)
+        float v = ray.direction.dot(r);
+        if (v < 0.f || (u+v) > det)
             return false;
         
 		float ood = 1.f / det;
-		
-		t = temp * ood;
-		point = ray(t);
-		normal = n.normalize();
-		return true;
+		float temp = e2.dot(r) * ood;
+		if (temp > ray.mint && temp < ray.maxt) {
+			t = temp;
+			point = ray(t);
+			uv.x = u*ood; uv.y = v*ood; uv.z = 1.f - uv.x - uv.y;
+			vec3 n = e1.cross(e2);
+			normal = n.normalize();
+
+			return true;
+		}
+		return false;
 	}
 };
 
@@ -168,8 +175,61 @@ struct AABB
 struct Mesh
 {
 	std::vector<float3> vertices;
+	std::vector<float3> normals;
 	std::vector<int> indices;
 	AABB bounds;
+
+	bool hit(const Ray& ray, HitRecord &rec, const int a, const int b, const int c) const
+	{
+		const vec3& va = vertices[a];
+		const vec3 e1 = vertices[b] - va;
+		const vec3 e2 = vertices[c] - va;
+		
+		// Left Handed, reverse determinant
+		//float det = -n.dot(ray.direction);
+		const vec3 q = ray.direction.cross(e2);
+		float det = e1.dot(q);
+
+		if (det < 0.0001f)
+			//if (abs(det) < 0.0001f)
+			return false;
+
+		const vec3 ap = (ray.origin - va);
+		// backface culling
+		//float temp = n.dot(ap);
+		//if (temp < 0.f)
+		//	return false;
+
+		/*vec3 e = ray.direction.cross(ap);
+		float v = e.dot(e2);
+		if (v < 0.f || v > det)
+		return false;
+		float w = -e.dot(e1);
+		if (w < 0.f || (v+w) > det)
+		return false;*/
+
+		//vec3 q = ray.direction.cross(e2);
+		float u = ap.dot(q);
+		if (u < 0.f || u > det)
+			return false;
+		const vec3 r = ap.cross(e1);
+		float v = ray.direction.dot(r);
+		if (v < 0.f || (u + v) > det)
+			return false;
+
+		
+		float ood = 1.f / det;
+		float temp = e2.dot(r) * ood;
+		if (temp > ray.mint && temp < ray.maxt) {
+			rec.t = temp;
+			rec.point = ray(rec.t);
+			rec.uv.y = u*ood; rec.uv.z = v*ood; rec.uv.x = 1.f - rec.uv.y - rec.uv.z;
+			rec.normal = normals[a] * rec.uv.x + normals[b] * rec.uv.y + normals[c] * rec.uv.z;
+			rec.normal.normalize();
+			return true;
+		}
+		return false;
+	}
 
 	// in world space
 	bool hit(Ray ray, HitRecord &rec) const
@@ -181,7 +241,8 @@ struct Mesh
 			int numTri = indices.size() / 3;
 			for (int i = 0; i < numTri; i++)
 			{
-				bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
+				bool ok = hit(ray, rec, indices[i * 3], indices[i * 3 + 1], indices[i * 3 + 2]); 
+				//bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
 				if (ok) {
 					ray.maxt = rec.t;
 				}
@@ -325,7 +386,7 @@ struct Camera
 		float3 offset;
 		unproject(offset, x, y);
 		// using same value for position & direction -> perspective ray converging to camera center
-		return Ray{ position + offset, (position + offset).normalize(), 0.f, farPlane - nearPlane };
+		return Ray{ position/* + offset*/, (position + offset).normalize(), 0.f, farPlane - nearPlane };
 	}
 };
 
@@ -615,17 +676,18 @@ int main(void)
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, "data/no_material.obj");
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, "data/monkeyhead2.obj");
     scene.meshes.reserve(1);
     Mesh objMesh;
     objMesh.bounds.min = vec3(FLT_MAX);
     objMesh.bounds.max = vec3(-FLT_MAX);
-    objMesh.vertices.reserve(attrib.vertices.size()/3);
-    const float scale = 0.1f;
+    objMesh.vertices.reserve(attrib.vertices.size() / 3);
+	objMesh.normals.reserve(attrib.vertices.size() / 3);
+    const float scale = 1.0f;
     for (int i = 0; i < attrib.vertices.size(); i+=3) {
-        const float x = attrib.vertices[i*3]*scale;
-        const float y = attrib.vertices[i*3+1]*scale;
-        const float z = attrib.vertices[i*3+2]*scale + 1.5f;
+        const float x = attrib.vertices[i]*scale;
+        const float y = attrib.vertices[i+1]*scale;
+        const float z = attrib.vertices[i+2]*scale +2.0f;
         objMesh.vertices.emplace_back(vec3(x, y, z));
         if (x < objMesh.bounds.min.x) objMesh.bounds.min.x = x;
         if (y < objMesh.bounds.min.y) objMesh.bounds.min.y = y;
@@ -633,6 +695,10 @@ int main(void)
         if (x > objMesh.bounds.max.x) objMesh.bounds.max.x = x;
         if (y > objMesh.bounds.max.y) objMesh.bounds.max.y = y;
         if (z > objMesh.bounds.max.z) objMesh.bounds.max.z = z;
+		const float nx = attrib.normals[i];
+		const float ny = attrib.normals[i + 1];
+		const float nz = attrib.normals[i + 2];
+		objMesh.normals.emplace_back(vec3(nx, ny, nz));
     }
     for (auto &shape : shapes) {
         for (int indices = 0; indices < shape.mesh.indices.size(); indices+=3) {
@@ -717,7 +783,7 @@ int main(void)
 					Pixel pixel{ pi, pj, {0, 0, 0, 255} };
 					vec3 color(0.0f, 0.0f, 0.0f);
 #if 1
-					const int numSamples = 1;// 256;
+					const int numSamples = 16;// 256;
 					for (int s = 0; s < numSamples; s++)
 					{
 						// stratify / jitter
