@@ -10,10 +10,14 @@
 #include "TGA.h"
 #include "Framebuffer.h"
 
-#ifdef _WIN32
+#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NO_MIN_MAX
 #include <windows.h>
+#elif defined(__APPLE__)
+#include <CoreServices/CoreServices.h>
+#include <mach/mach.h>
+#include <mach/mach_time.h>
 #endif
 
 struct float3
@@ -138,13 +142,14 @@ struct Disk
 struct Plane
 {
 	union {
-		struct { float a, b, c, d; };
-		struct { float3 n; float d; };
+		struct { float a, b, c; };
+        struct { float3 n; };
+        float d;
 	};
 
 	bool hit(const Ray& ray, float3& point) const
 	{
-
+        return false;
 	}
 };
 
@@ -247,7 +252,7 @@ vec3 randomDirectionOnHemisphere(/*const vec3& N*/)
 vec3 randomUnitVector()
 {
 	float z = nextFloat(0.0f, 1.0f) * 2.f - 1.f;
-	float a = nextFloat(0.0f, 1.0f) * 2.f - M_PI;
+	float a = nextFloat(0.0f, 1.0f) * 2.f * M_PI;
 	float r = sqrtf(1.f - z*z);
 	float x = cos(a) * r;
 	float y = sin(a) * r;
@@ -385,7 +390,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 	// get closest hit
 	for (auto& sphere : scene.spheres)
 	{
-		Material& mat = scene.materials[index];
+		//Material& mat = scene.materials[index];
 		//if (mat.type != Material::METAL) {
 			if (sphere.hit(ray, rec))
 			{
@@ -465,7 +470,7 @@ int main(void)
 	Scene scene;
 	
 	scene.camera.position = float3(0.f, 0.f, 0.f);
-	scene.camera.initialize(45.f, 0.5f, 100.f, fb.width, fb.height);
+	scene.camera.initialize(60.f, 0.5f, 100.f, fb.width, fb.height);
 
 	scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
@@ -495,9 +500,14 @@ int main(void)
 	// main loop ---
 
 	srand(2 ^ 24 - 1);
-
+    
+#ifdef _WIN32
 	LARGE_INTEGER t1, t2;
 	QueryPerformanceCounter(&t1);
+#else
+    uint64_t t1 = mach_absolute_time();
+#endif
+    
 	uint64_t totalRayCount = 0;
 	Color* colorBuffer = (Color*)fb.colorBuffer;
 	//for (int j = fb.height - 1; j >= 0; j--)
@@ -518,7 +528,8 @@ int main(void)
 				Color* buffer = &colorBuffer[fb.width*(ja + j) + (ia)];
 				for (int i = 0; i < TILESIZE; i++)
 				{
-					Pixel pixel{ i+ia, j+ja, {0, 0, 0, 255} };
+                    uint16_t pi = (i+ia), pj = (j+ja);
+					Pixel pixel{ pi, pj, {0, 0, 0, 255} };
 					vec3 color(0.0f, 0.0f, 0.0f);
 #if 1
 					const int numSamples = 1;// 256;
@@ -544,15 +555,25 @@ int main(void)
 		}
 	}
 
+#ifdef _WIN32
 	QueryPerformanceCounter(&t2);
 	uint64_t dt = t2.QuadPart - t1.QuadPart;
 	LARGE_INTEGER freq;
 	QueryPerformanceFrequency(&freq);
 	double seconds = double(dt) / double(freq.QuadPart);
-	char buffer[512];
+#else
+    uint64_t t2 = mach_absolute_time();
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    double seconds = (double)((t2-t1) * timebase.numer / timebase.denom) / 1000000000.0;
+#endif
+    char buffer[128];
 	sprintf(buffer, "%.2fms (%.1f FPS) %.1fMrays/sec %.2fMRays/frame\n", seconds*1000.f, 1.0f / seconds, totalRayCount / seconds * 1.0e-6f, totalRayCount * 1.0e-6f);
+#ifdef _WIN32
 	OutputDebugStringA(buffer);
-
+#else
+    printf("%s", buffer);
+#endif
 	for (int b = 0; b < 0; b++) {
 		for (int j = 1; j < fb.height; j++)
 		{
