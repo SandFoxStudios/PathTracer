@@ -6,6 +6,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <vector>
+#include <array>
 
 #include "TGA.h"
 #include "Framebuffer.h"
@@ -30,6 +31,7 @@ struct float3
     inline float3(const float scalar) : x(scalar), y(scalar), z(scalar) {}
 	inline float3(const float _x, const float _y, const float _z) : x(_x), y(_y), z(_z) {}
 	inline float operator[](const int i) const { return (&x)[i]; }
+    inline float& operator[](const int i) { return (&x)[i]; }
 	inline float3 operator-() const { return float3(-x, -y, -z); }
 	inline float3 operator*(const float rhs) const { return float3(x * rhs, y * rhs, z * rhs); }
 	inline float3& operator*=(const float rhs) { x *= rhs; y *= rhs; z *= rhs; return *this; }
@@ -40,9 +42,13 @@ struct float3
 	inline float length() const { return sqrtf(x * x + y * y + z * z); }
 	inline float3& normalize() { operator*=(1.f / length()); return *this; }
 	inline float dot(const float3& rhs) const { return x * rhs.x + y * rhs.y + z * rhs.z; }
-	inline float3 cross(const float3& rhs) const { return float3(y*rhs.z - z*rhs.y, z*rhs.x - x*rhs.z, x*rhs.y - y*rhs.x); }	
+	inline float3 cross(const float3& rhs) const { return float3(y*rhs.z - z*rhs.y, z*rhs.x - x*rhs.z, x*rhs.y - y*rhs.x); }
+    static float3 abs(const float3& vec) { return float3(fabs(vec.x), fabs(vec.y), fabs(vec.z)); }
 };
 inline float3 operator*(const float3& lhs, const float3& rhs) { return float3(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z); }
+inline float3 cross(const float3& lhs, const float3& rhs) { return lhs.cross(rhs); }
+inline float dot(const float3& lhs, const float3& rhs) { return lhs.dot(rhs); }
+inline float3 normalize(const float3& v) { return v*(1.f/v.length()); }
 typedef float3 vec3;
 
 struct Ray
@@ -69,7 +75,7 @@ struct HitRecord
 	vec3 normal; int material;
 	vec3 uv;
 
-	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c)
+	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c, const vec3& na, const vec3& nb, const vec3& nc)
 	{
 		vec3 e1 = b - a;
 		vec3 e2 = c - a;
@@ -103,7 +109,7 @@ struct HitRecord
             return false;
         vec3 r = ap.cross(e1);
         float v = ray.direction.dot(r);
-        if (v < 0.f || (u+v) > det)
+        if (v < 0.f || (u + v) > det)
             return false;
         
 		float ood = 1.f / det;
@@ -111,9 +117,10 @@ struct HitRecord
 		if (temp > ray.mint && temp < ray.maxt) {
 			t = temp;
 			point = ray(t);
-			uv.x = u*ood; uv.y = v*ood; uv.z = 1.f - uv.x - uv.y;
-			vec3 n = e1.cross(e2);
-			normal = n.normalize();
+            uv.y = u*ood; uv.z = v*ood; uv.x = 1.f - uv.y - uv.z;
+            normal = na * uv.x + nb * uv.y + nc * uv.z;
+            //normal = e1.cross(e2);
+            normal.normalize();
 
 			return true;
 		}
@@ -126,6 +133,15 @@ struct AABB
 	float3 min;
 	float3 max;
 
+    void insert(const vec3& p) {
+        if (p.x < min.x) min.x = p.x;
+        if (p.y < min.y) min.y = p.y;
+        if (p.z < min.z) min.z = p.z;
+        if (p.x > max.x) max.x = p.x;
+        if (p.y > max.y) max.y = p.y;
+        if (p.z > max.z) max.z = p.z;
+    }
+    
 	bool test(const Ray& ray) const
 	{
 		float tmin = ray.mint, tmax = ray.maxt;
@@ -172,13 +188,287 @@ struct AABB
 	}
 };
 
+/*======================== X-tests ========================*/
+
+#define AXISTEST_X01(a, b, fa, fb)               \
+p0 = a*v0.y - b*v0.z;                          \
+p2 = a*v2.y - b*v2.z;                          \
+if(p0<p2) {min=p0; max=p2;} else {min=p2; max=p0;} \
+rad = fa * halfExtent.y + fb * halfExtent.z;   \
+if(min>rad || max<-rad) return false;
+#define AXISTEST_X2(a, b, fa, fb)               \
+p0 = a*v0.z - b*v0.z;                       \
+p1 = a*v1.z - b*v1.z;                          \
+if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+rad = fa * halfExtent.y + fb * halfExtent.z;   \
+if(min>rad || max<-rad) return false;
+/*======================== Y-tests ========================*/
+#define AXISTEST_Y02(a, b, fa, fb)               \
+p0 = -a*v0.x + b*v0.z;                     \
+p2 = -a*v2.x + b*v2.z;                             \
+if(p0<p2) {min=p0; max=p2;} else {min=p2; max=p0;} \
+rad = fa * halfExtent.x + fb * halfExtent.z;   \
+if(min>rad || max<-rad) return false;
+#define AXISTEST_Y1(a, b, fa, fb)               \
+p0 = -a*v0.x + b*v0.z;                     \
+p1 = -a*v1.x + b*v1.z;                           \
+if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+rad = fa * halfExtent.x + fb * halfExtent.z;   \
+if(min>rad || max<-rad) return false;
+/*======================== Z-tests ========================*/
+#define AXISTEST_Z12(a, b, fa, fb)               \
+p1 = a*v1.x - b*v1.y;                       \
+p2 = a*v2.x - b*v2.y;                          \
+if(p2<p1) {min=p2; max=p1;} else {min=p1; max=p2;} \
+rad = fa * halfExtent.x + fb * halfExtent.y;   \
+if(min>rad || max<-rad) return false;
+#define AXISTEST_Z0(a, b, fa, fb)               \
+p0 = a*v0.x - b*v0.y;                   \
+p1 = a*v1.x - b*v1.y;                       \
+if(p0<p1) {min=p0; max=p1;} else {min=p1; max=p0;} \
+rad = fa * halfExtent.x + fb * halfExtent.y;   \
+if(min>rad || max<-rad) return false;
+
+#define FINDMINMAX(x0,x1,x2,min,max) \
+min = max = x0;   \
+if(x1<min) min=x1;\
+if(x1>max) max=x1;\
+if(x2<min) min=x2;\
+if(x2>max) max=x2;
+
+struct RegularGrid
+{
+    struct Cell {
+        AABB bounds;
+        int left, right;
+        std::vector<const int*> content;
+        
+        // adapted from http://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox3.txt
+        bool overlap(const int* indices, const std::vector<float3>& vertices)
+        {
+            float min, max, p0, p1, p2, rad;
+            vec3 halfExtent = (bounds.max - bounds.min)*0.5f;
+            vec3 center = (bounds.max + bounds.min)*0.5f;
+            vec3 v0 = vertices[indices[0]] - center;
+            vec3 v1 = vertices[indices[1]] - center;
+            vec3 v2 = vertices[indices[2]] - center;
+            
+            vec3 e0 = v1 - v0;
+            vec3 e1 = v2 - v1;
+            vec3 e2 = v0 - v2;
+            vec3 fe = vec3::abs(e0);
+            AXISTEST_X01(e0.z, e0.y, fe.z, fe.y);
+            AXISTEST_Y02(e0.z, e0.x, fe.z, fe.x);
+            AXISTEST_Z12(e0.y, e0.x, fe.y, fe.x);
+            fe = float3::abs(e1);
+            AXISTEST_X01(e1.z, e1.y, fe.z, fe.y);
+            AXISTEST_Y02(e1.z, e1.x, fe.z, fe.x);
+            AXISTEST_Z0(e1.y, e1.x, fe.y, fe.x);
+            fe = float3::abs(e2);
+            AXISTEST_X2(e2.z, e2.y, fe.z, fe.y);
+            AXISTEST_Y1(e2.z, e2.x, fe.z, fe.x);
+            AXISTEST_Z12(e2.y, e2.x, fe.y, fe.x);
+            
+            /*  1. first test overlap in the {x,y,z}-directions */
+            /*  find min, max of the triangle each direction, and test for overlap in */
+            /*  that direction -- this is equivalent to testing a minimal AABB around */
+            /*  the triangle against the AABB */
+            
+            /* test in X-direction */
+            FINDMINMAX(v0.x,v1.x,v2.x,min,max);
+            if(min>halfExtent.x || max<-halfExtent.x) return false;
+            /* test in Y-direction */
+            FINDMINMAX(v0.y,v1.y,v2.y,min,max);
+            if(min>halfExtent.y || max<-halfExtent.y) return 0;
+            /* test in Z-direction */
+            FINDMINMAX(v0.z,v1.z,v2.z,min,max);
+            if(min>halfExtent.z || max<-halfExtent.z) return 0;
+            
+            // 2. Plane-AABB test
+            vec3 n = cross(e0, e1);
+            //float e = halfExtent.x*abs(center.x) + halfExtent.y*abs(center.y) + halfExtent.z*abs(center.z);
+            //float s = dot(center, n);
+            vec3 vmin, vmax;
+            for (int q = 0; q < 3; q++) {
+                float v = v0[q];
+                if(n[q] > 0.0f) {
+                    vmin[q] = -halfExtent[q] - v;    // -NJMP-
+                    vmax[q] = halfExtent[q] - v;    // -NJMP-
+                }
+                else {
+                    vmin[q] = halfExtent[q] - v;    // -NJMP-
+                    vmax[q] = -halfExtent[q] - v;    // -NJMP-
+                }
+            }
+            if(dot(normal,vmin) > 0.0f) return false;    // -NJMP-
+            if(dot(normal,vmax) < 0.0f) return false;    // -NJMP-
+
+            content.push_back(indices);
+            return true;
+        }
+    };
+    
+    AABB root;
+    vec3 cellExtents;
+    Cell* cells;
+    int subdivisions;
+    
+    RegularGrid() {}
+    ~RegularGrid() {
+        delete[] cells;
+    }
+    RegularGrid(const AABB& bound, int subdiv = 16)
+    {
+        root = bound;
+        subdivisions = subdiv;
+        cellExtents = (root.max - root.min)*(1.f/(float)subdiv);
+        
+        cells = new Cell[subdivisions*subdivisions*subdivisions];
+        // TODO: morton sequence
+        for (int w = 0; w < subdiv; w++) {
+            vec3 slice = root.min;
+            slice.z += cellExtents.z*w;
+            for (int v = 0; v < subdiv; v++) {
+                vec3 row = slice;
+                row.y += cellExtents.y*v;
+                for (int u = 0; u < subdiv; u++) {
+                    int index = (w*subdiv*subdiv) + v*subdiv + u;
+                    cells[index].bounds.min = row;
+                    cells[index].bounds.max = row + cellExtents;
+                    row.x += cellExtents.y;
+                }
+            }
+        }
+    }
+
+    void construct(const std::vector<float3>& vertices, const std::vector<int>& indices)
+    {
+        vec3 extents(1.f / cellExtents.x, 1.f / cellExtents.y, 1.f / cellExtents.z);
+        int numTris = indices.size() / 3;
+        int misses = 0;
+        for (int tri = 0; tri < numTris; tri++)
+        {
+            // 1. calc bounding box and calc bounding box overlap as a crude test
+            AABB triBox;
+            const vec3& p0 = vertices[indices[tri*3]];
+            const vec3& p1 = vertices[indices[tri*3+1]];
+            const vec3& p2 = vertices[indices[tri*3+2]];
+            triBox.min = p0; triBox.max = p0;
+            triBox.insert(p1);
+            triBox.insert(p2);
+            triBox.min = (triBox.min - root.min) * extents;
+            triBox.max = (triBox.max - root.min) * extents;
+            int minX = (int)floor(triBox.min.x), minY = (int)floor(triBox.min.y), minZ = (int)floor(triBox.min.z);
+            int maxX = (int)ceil(triBox.max.x), maxY = (int)ceil(triBox.max.y), maxZ = (int)ceil(triBox.max.z);
+            // 2. refine overlapping cells
+            for (int w = minZ; w < maxZ; w++) {
+                for (int v = minY; v < maxY; v++) {
+                    for (int u = minX; u < maxX; u++) {
+                        int index = (w*subdivisions*subdivisions) + v*subdivisions + u;
+                        //if (cells[index].overlap(&indices[tri*3], vertices) == false)
+                        //    misses++;
+                        cells[index].content.push_back(&indices[tri*3]);
+                    }
+                }
+            }
+        }
+    }
+    
+    // in world space
+    bool hit(const Ray& ray, HitRecord &rec, const std::vector<float3>& vertices, const std::vector<float3>& normals) const
+    {
+        if (root.hit(ray, rec))
+        {
+            Ray endRay = ray;
+            endRay.origin += ray.direction * 99.f;
+            endRay.direction = -ray.direction;
+            HitRecord endRec;
+            root.hit(endRay, endRec);
+            
+            vec3 extents(1.f / cellExtents.x, 1.f / cellExtents.y, 1.f / cellExtents.z);
+            // uses 3DDDA
+            vec3 min = (rec.point - root.min) * extents;
+            int i = (int)(min.x), j = (int)(min.y), k = (int)(min.z);
+            vec3 max = (endRec.point - root.min) * extents;
+            int iend = (int)(max.x), jend = (int)(max.y), kend = (int)(max.z);
+            // this shouldn't be necessary if we have a better max
+            if (iend >= subdivisions) iend = subdivisions - 1;
+            if (jend >= subdivisions) jend = subdivisions - 1;
+            if (kend >= subdivisions) kend = subdivisions - 1;
+            
+            // calc ray direction signs
+            int di = ray.direction.x > 0 ? 1 : (ray.direction.x < 0 ? -1 : 0);
+            int dj = ray.direction.y > 0 ? 1 : (ray.direction.y < 0 ? -1 : 0);
+            int dk = ray.direction.z > 0 ? 1 : (ray.direction.z < 0 ? -1 : 0);
+            
+            float minx = floorf(min.x) * cellExtents.x, maxx = minx + cellExtents.x;
+            float miny = floorf(min.y) * cellExtents.y, maxy = miny + cellExtents.y;
+            float minz = floorf(min.z) * cellExtents.z, maxz = minz + cellExtents.z;
+            
+            vec3 diff = vec3::abs(max - min);
+            float tx = ((min.x < max.x) ? (min.x - minx) : (maxx - min.x)) / diff.x;
+            float ty = ((min.y < max.y) ? (min.y - miny) : (maxy - min.y)) / diff.y;
+            float tz = ((min.z < max.z) ? (min.z - minz) : (maxz - min.z)) / diff.z;
+            
+            float deltatx = extents.x / diff.x;
+            float deltaty = extents.y / diff.y;
+            float deltatz = extents.z / diff.z;
+            
+            for (;;)
+            {
+                int index = (k*subdivisions*subdivisions) + j*subdivisions + i;
+                if (cells[index].content.size()) {
+                    bool hasHit = false;
+                    int hitCount = 0;
+                    for (const int* indices : cells[index].content) {
+                        bool didHit = rec.hit(ray, vertices[indices[0]], vertices[indices[1]], vertices[indices[2]]
+                                              , normals[indices[0]], normals[indices[1]], normals[indices[2]]);
+                        if (didHit) {
+                            hasHit |= didHit;
+                            hitCount++;
+                        }
+                    }
+                    if (hasHit)
+                        return true;
+                }
+                
+                if (tx <= ty && tx <= tz)
+                {
+                    if (i == iend) break;
+                    tx += deltatx;
+                    i += di;
+                } else if (ty <= tx && ty <= tz)
+                {
+                    if (j == jend) break;
+                    ty += deltaty;
+                    j += dj;
+                } else
+                {
+                    if (k == kend) break;
+                    tz += deltatz;
+                    k += dk;
+                }
+            }
+        }
+        return false;
+    }
+};
+
 struct Mesh
 {
 	std::vector<float3> vertices;
 	std::vector<float3> normals;
 	std::vector<int> indices;
 	AABB bounds;
+    RegularGrid* grid;
 
+    Mesh() : grid(nullptr) {}
+    Mesh(Mesh&& m) : vertices(std::move(m.vertices)), normals(std::move(m.normals)), indices(std::move(m.indices)), bounds(std::move(m.bounds)) { grid = nullptr; std::swap(grid, m.grid); }
+    ~Mesh() {
+        if (grid)
+            delete grid;
+    }
+    
 	bool hit(const Ray& ray, HitRecord &rec, const int a, const int b, const int c) const
 	{
 		const vec3& va = vertices[a];
@@ -222,7 +512,7 @@ struct Mesh
 		float temp = e2.dot(r) * ood;
 		if (temp > ray.mint && temp < ray.maxt) {
 			rec.t = temp;
-			rec.point = ray(rec.t);
+			rec.point = ray(temp);
 			rec.uv.y = u*ood; rec.uv.z = v*ood; rec.uv.x = 1.f - rec.uv.y - rec.uv.z;
 			rec.normal = normals[a] * rec.uv.x + normals[b] * rec.uv.y + normals[c] * rec.uv.z;
 			rec.normal.normalize();
@@ -236,7 +526,8 @@ struct Mesh
 	{
 		bool hasHit = false;
 		//return bounds.hit(ray, rec);
-		if (bounds.test(ray))
+#if DONT_USE_GRID
+        if (bounds.test(ray))
 		{
 			int numTri = indices.size() / 3;
 			for (int i = 0; i < numTri; i++)
@@ -248,7 +539,11 @@ struct Mesh
 				}
 				hasHit |= ok;
 			}
-		}
+        }
+#else
+        hasHit = grid->hit(ray, rec, vertices, normals);
+#endif
+
 		return hasHit;
 	}
 };
@@ -341,20 +636,45 @@ struct Plane
 	}
 };
 
+
+
+
 struct Camera
 {
 	float3 position;
 	float3 forward;
+    float3 lowerLeftCorner;
+    float3 horizontal;
+    float3 vertical;
 
 	float width, height, nearPlane, farPlane, fov, aspectRatio;
 	float invDenom, invTanAngle;
 	
+    void lookAt(const float3& eye, const float3& target, const float3& up)
+    {
+        position = eye;
+        float3 w = normalize(target - eye);
+        float3 u = normalize(cross(up, w));
+        float3 v = cross(w, u);
+        
+        // projection
+        float theta = tan(fov * M_PI / 360.0f);
+        invTanAngle = 1.f / theta;
+        float hh = theta;
+        float hw = theta*aspectRatio;
+        float focusDist = 1.f;
+        lowerLeftCorner = position - hw*u*focusDist - hh*v*focusDist + w*focusDist;
+        horizontal = (2.f*hw*focusDist) * u;
+        vertical = (2.f*hh*focusDist) * v;
+    }
+    
 	void initialize(float _fov, float _near, float _far, float _width, float _height)
 	{
 		width = _width; height = _height;
-		fov = _fov;  nearPlane = _near; farPlane = _far; aspectRatio = height / width;
+		fov = _fov;  nearPlane = _near; farPlane = _far; aspectRatio = width/height;
 		invDenom = 1.f / (farPlane - nearPlane);
-		invTanAngle = 1.f / tan(fov * M_PI / 360.0f);
+        
+        //lookAt(eye, target, float3(0.0f, 1.0f, 0.0f));
 	}
 	
 	void project(uint16_t& x, uint16_t& y, const float3& p) const
@@ -383,6 +703,8 @@ struct Camera
 
 	Ray generateRay(float x, float y) const
 	{
+        x/=width; y/=height;
+        return Ray{position, (lowerLeftCorner + x*horizontal + y*vertical - position).normalize(), 0.f, farPlane - nearPlane };
 		float3 offset;
 		unproject(offset, x, y);
 		// using same value for position & direction -> perspective ray converging to camera center
@@ -684,10 +1006,11 @@ int main(void)
     objMesh.vertices.reserve(attrib.vertices.size() / 3);
 	objMesh.normals.reserve(attrib.vertices.size() / 3);
     const float scale = 1.0f;
+    const vec3 translation(0.0f, 0.0f, 3.f);
     for (int i = 0; i < attrib.vertices.size(); i+=3) {
         const float x = attrib.vertices[i]*scale;
         const float y = attrib.vertices[i+1]*scale;
-        const float z = attrib.vertices[i+2]*scale +2.0f;
+        const float z = attrib.vertices[i+2]*scale + translation.z;
         objMesh.vertices.emplace_back(vec3(x, y, z));
         if (x < objMesh.bounds.min.x) objMesh.bounds.min.x = x;
         if (y < objMesh.bounds.min.y) objMesh.bounds.min.y = y;
@@ -713,13 +1036,16 @@ int main(void)
         //    objMesh.indices.push_back(index.vertex_index);
         //}
     }
-    scene.meshes.emplace_back(objMesh);
+    objMesh.grid = new RegularGrid(objMesh.bounds);
+    objMesh.grid->construct(objMesh.vertices, objMesh.indices);
+    scene.meshes.emplace_back(std::move(objMesh));
     //scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
     
 
 	
 	scene.camera.position = float3(0.f, 0.f, 0.f);
-	scene.camera.initialize(60.f, 0.5f, 100.f, fb.width, fb.height);
+	scene.camera.initialize(60.f, 0.1f, 100.f, fb.width, fb.height);
+    scene.camera.lookAt(float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 1.f), float3(0.0f, 1.0f, 0.0f));
 
     srand(2 ^ 17 - 1);
     
@@ -783,7 +1109,7 @@ int main(void)
 					Pixel pixel{ pi, pj, {0, 0, 0, 255} };
 					vec3 color(0.0f, 0.0f, 0.0f);
 #if 1
-					const int numSamples = 16;// 256;
+					const int numSamples = 1;// 256;
 					for (int s = 0; s < numSamples; s++)
 					{
 						// stratify / jitter
