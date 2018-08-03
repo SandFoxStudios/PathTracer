@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		82953E6421148B8900B09502 /* Shader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 82953E6221148B8900B09502 /* Shader.cpp */; };
+		82953E6721148C0B00B09502 /* OpenGL.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 82953E6621148C0A00B09502 /* OpenGL.framework */; };
+		82953E6921148C1800B09502 /* AppKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 82953E6821148C1800B09502 /* AppKit.framework */; };
+		82953E6B21148C2800B09502 /* libglfw3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 82953E6A21148C2800B09502 /* libglfw3.a */; };
+		82953E6D21148C3B00B09502 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 82953E6C21148C3B00B09502 /* QuartzCore.framework */; };
+		82953E6F21148C4600B09502 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 82953E6E21148C4600B09502 /* IOKit.framework */; };
 		829D3CAF2109F71C00E459B0 /* PathTracer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 829D3CAE2109F71C00E459B0 /* PathTracer.cpp */; };
 /* End PBXBuildFile section */
 
@@ -23,9 +29,19 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		82896508211226FD0020B074 /* tiny_obj_loader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tiny_obj_loader.h; sourceTree = "<group>"; };
+		82896508211226FD0020B074 /* tiny_obj_loader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = tiny_obj_loader.h; path = libs/tiny_obj_loader.h; sourceTree = "<group>"; };
+		82953E6221148B8900B09502 /* Shader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Shader.cpp; sourceTree = "<group>"; };
+		82953E6321148B8900B09502 /* Shader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Shader.h; sourceTree = "<group>"; };
+		82953E6621148C0A00B09502 /* OpenGL.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGL.framework; path = System/Library/Frameworks/OpenGL.framework; sourceTree = SDKROOT; };
+		82953E6821148C1800B09502 /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		82953E6A21148C2800B09502 /* libglfw3.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libglfw3.a; path = libs/glfw/lib/osx/libglfw3.a; sourceTree = "<group>"; };
+		82953E6C21148C3B00B09502 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		82953E6E21148C4600B09502 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		82953E712114A1C300B09502 /* postprocess.vs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.glsl; name = postprocess.vs; path = data/shaders/postprocess.vs; sourceTree = "<group>"; };
+		82953E722114A1C300B09502 /* pathtracing.fs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.glsl; name = pathtracing.fs; path = data/shaders/pathtracing.fs; sourceTree = "<group>"; };
+		82953E732114A1C300B09502 /* copy.fs */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.glsl; name = copy.fs; path = data/shaders/copy.fs; sourceTree = "<group>"; };
 		829D3CA32109F6E000E459B0 /* PathTracer */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = PathTracer; sourceTree = BUILT_PRODUCTS_DIR; };
-		829D3CAD2109F71C00E459B0 /* TGA.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TGA.h; sourceTree = SOURCE_ROOT; };
+		829D3CAD2109F71C00E459B0 /* TGA.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = TGA.h; path = libs/TGA.h; sourceTree = SOURCE_ROOT; };
 		829D3CAE2109F71C00E459B0 /* PathTracer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PathTracer.cpp; sourceTree = SOURCE_ROOT; };
 		829D3CB02109F73300E459B0 /* Framebuffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Framebuffer.h; sourceTree = SOURCE_ROOT; };
 		82D870E5210A0ACA00BDB472 /* output.tga */ = {isa = PBXFileReference; lastKnownFileType = file; path = output.tga; sourceTree = "<group>"; };
@@ -36,17 +52,54 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				82953E6F21148C4600B09502 /* IOKit.framework in Frameworks */,
+				82953E6D21148C3B00B09502 /* QuartzCore.framework in Frameworks */,
+				82953E6B21148C2800B09502 /* libglfw3.a in Frameworks */,
+				82953E6921148C1800B09502 /* AppKit.framework in Frameworks */,
+				82953E6721148C0B00B09502 /* OpenGL.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		82953E612114882600B09502 /* libs */ = {
+			isa = PBXGroup;
+			children = (
+				829D3CAD2109F71C00E459B0 /* TGA.h */,
+				82896508211226FD0020B074 /* tiny_obj_loader.h */,
+			);
+			name = libs;
+			sourceTree = "<group>";
+		};
+		82953E6521148C0A00B09502 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				82953E6E21148C4600B09502 /* IOKit.framework */,
+				82953E6C21148C3B00B09502 /* QuartzCore.framework */,
+				82953E6A21148C2800B09502 /* libglfw3.a */,
+				82953E6821148C1800B09502 /* AppKit.framework */,
+				82953E6621148C0A00B09502 /* OpenGL.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		82953E702114A1AB00B09502 /* shaders */ = {
+			isa = PBXGroup;
+			children = (
+				82953E732114A1C300B09502 /* copy.fs */,
+				82953E722114A1C300B09502 /* pathtracing.fs */,
+				82953E712114A1C300B09502 /* postprocess.vs */,
+			);
+			name = shaders;
+			sourceTree = "<group>";
+		};
 		829D3C9A2109F6E000E459B0 = {
 			isa = PBXGroup;
 			children = (
 				829D3CA52109F6E000E459B0 /* PathTracer */,
 				829D3CA42109F6E000E459B0 /* Products */,
+				82953E6521148C0A00B09502 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -61,11 +114,13 @@
 		829D3CA52109F6E000E459B0 /* PathTracer */ = {
 			isa = PBXGroup;
 			children = (
-				82896508211226FD0020B074 /* tiny_obj_loader.h */,
+				82953E702114A1AB00B09502 /* shaders */,
+				82953E6221148B8900B09502 /* Shader.cpp */,
+				82953E6321148B8900B09502 /* Shader.h */,
+				82953E612114882600B09502 /* libs */,
 				82D870E5210A0ACA00BDB472 /* output.tga */,
 				829D3CB02109F73300E459B0 /* Framebuffer.h */,
 				829D3CAE2109F71C00E459B0 /* PathTracer.cpp */,
-				829D3CAD2109F71C00E459B0 /* TGA.h */,
 			);
 			name = PathTracer;
 			sourceTree = "<group>";
@@ -126,6 +181,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				82953E6421148B8900B09502 /* Shader.cpp in Sources */,
 				829D3CAF2109F71C00E459B0 /* PathTracer.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -184,6 +240,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					libs/glfw/include,
+					libs,
+				);
+				LIBRARY_SEARCH_PATHS = libs/glfw/lib/osx;
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -236,6 +297,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					libs/glfw/include,
+					libs,
+				);
+				LIBRARY_SEARCH_PATHS = libs/glfw/lib/osx;
 				MACOSX_DEPLOYMENT_TARGET = 10.13;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = macosx;
@@ -246,6 +312,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/libs/glfw/lib/osx",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -254,6 +324,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/libs/glfw/lib/osx",
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;

@@ -43,14 +43,17 @@ struct Framebuffer
 	uint16_t width;
 	uint16_t height;
 	uint8_t* colorBuffer;
+    float* accumulationBuffer;
 
 	void create(int w, int h) {
 		width = w; height = h;
 		colorBuffer = new uint8_t[width * height * sizeof(Color)];
-		memset(colorBuffer, 0, width * height * sizeof(Color));
+        accumulationBuffer = new float[width * height * 3];
+		memset(accumulationBuffer, 0, width * height * 3*4);
 	}
 	
 	void destroy() {
 		delete[] colorBuffer;
+        delete[] accumulationBuffer;
 	}
 };

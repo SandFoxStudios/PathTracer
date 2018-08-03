@@ -1,4 +1,14 @@
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <CoreServices/CoreServices.h>
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#endif
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -8,21 +18,26 @@
 #include <vector>
 #include <array>
 
-#include "TGA.h"
-#include "Framebuffer.h"
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "libs/tiny_obj_loader.h"
 
+#if ONE_SHOT
+#include "libs/TGA.h"
+#else
+#include "GLFW/glfw3.h"
 #if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#define NO_MIN_MAX
-#include <windows.h>
+#include <GL/glew.h>
+#include <GL/GL.h>
+#pragma comment(lib, "opengl32.lib")
 #elif defined(__APPLE__)
-#include <CoreServices/CoreServices.h>
-#include <mach/mach.h>
-#include <mach/mach_time.h>
+#include <OpenGL/OpenGL.h>
+#include <OpenGL/gl3.h>
+#include <OpenGL/gl3ext.h>
+#endif
 #endif
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "tiny_obj_loader.h"
+#include "Framebuffer.h"
+#include "Shader.h"
 
 struct float3
 {
@@ -65,8 +80,8 @@ struct Material
 {
 	enum { LAMBERT, METAL, DIELECTRIC };
 	float r, g, b;
-	int type;
-	float param; // metal(1)=fuzz, dieletric(2)=ior
+	float type;
+	//float param; // metal(1)=fuzz, dieletric(2)=ior
 };
 
 struct HitRecord
@@ -75,7 +90,7 @@ struct HitRecord
 	vec3 normal; int material;
 	vec3 uv;
 
-	bool hit(const Ray& ray, const vec3& a, const vec3& b, const vec3& c, const vec3& na, const vec3& nb, const vec3& nc)
+	bool hit(Ray& ray, const vec3& a, const vec3& b, const vec3& c, const vec3& na, const vec3& nb, const vec3& nc)
 	{
 		vec3 e1 = b - a;
 		vec3 e2 = c - a;
@@ -115,8 +130,9 @@ struct HitRecord
 		float ood = 1.f / det;
 		float temp = e2.dot(r) * ood;
 		if (temp > ray.mint && temp < ray.maxt) {
-			t = temp;
-			point = ray(t);
+            ray.maxt = temp;
+            t = temp;
+			point = ray(temp);
             uv.y = u*ood; uv.z = v*ood; uv.x = 1.f - uv.y - uv.z;
             normal = na * uv.x + nb * uv.y + nc * uv.z;
             //normal = e1.cross(e2);
@@ -375,15 +391,17 @@ struct RegularGrid
     }
     
     // in world space
-    bool hit(const Ray& ray, HitRecord &rec, const std::vector<float3>& vertices, const std::vector<float3>& normals) const
+    bool hit(Ray& ray, HitRecord &rec, const std::vector<float3>& vertices, const std::vector<float3>& normals) const
     {
         if (root.hit(ray, rec))
         {
             Ray endRay = ray;
-            endRay.origin += ray.direction * 99.f;
+            endRay.origin = rec.point + ray.direction * 50.f;
             endRay.direction = -ray.direction;
             HitRecord endRec;
             root.hit(endRay, endRec);
+            
+            vec3 delta = endRec.point - rec.point;
             
             vec3 extents(1.f / cellExtents.x, 1.f / cellExtents.y, 1.f / cellExtents.z);
             // uses 3DDDA
@@ -396,10 +414,17 @@ struct RegularGrid
             if (jend >= subdivisions) jend = subdivisions - 1;
             if (kend >= subdivisions) kend = subdivisions - 1;
             
+            // todo: early exit if (ijk)end == (ijk)
+            //if (abs(delta.x)<0.0001f && abs(delta.y)<0.0001f && abs(delta.z)<0.0001f)
+            //    return false;
+            
             // calc ray direction signs
-            int di = ray.direction.x > 0 ? 1 : (ray.direction.x < 0 ? -1 : 0);
-            int dj = ray.direction.y > 0 ? 1 : (ray.direction.y < 0 ? -1 : 0);
-            int dk = ray.direction.z > 0 ? 1 : (ray.direction.z < 0 ? -1 : 0);
+            //int di = ray.direction.x > 0 ? 1 : (ray.direction.x < 0 ? -1 : 0);
+            //int dj = ray.direction.y > 0 ? 1 : (ray.direction.y < 0 ? -1 : 0);
+            //int dk = ray.direction.z > 0 ? 1 : (ray.direction.z < 0 ? -1 : 0);
+            int di = (i < iend) ? 1 : ((i > iend) ? -1 : 0);
+            int dj = (j < jend) ? 1 : ((j > jend) ? -1 : 0);
+            int dk = (k < kend) ? 1 : ((k > kend) ? -1 : 0);
             
             float minx = floorf(min.x) * cellExtents.x, maxx = minx + cellExtents.x;
             float miny = floorf(min.y) * cellExtents.y, maxy = miny + cellExtents.y;
@@ -526,14 +551,15 @@ struct Mesh
 	{
 		bool hasHit = false;
 		//return bounds.hit(ray, rec);
-#if DONT_USE_GRID
+#if 0//DONT_USE_GRID
         if (bounds.test(ray))
 		{
 			int numTri = indices.size() / 3;
 			for (int i = 0; i < numTri; i++)
 			{
-				bool ok = hit(ray, rec, indices[i * 3], indices[i * 3 + 1], indices[i * 3 + 2]); 
-				//bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
+				//bool ok = hit(ray, rec, indices[i * 3], indices[i * 3 + 1], indices[i * 3 + 2]);
+				bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]],
+                                  normals[indices[i * 3]], normals[indices[i * 3 + 1]], normals[indices[i * 3 + 2]]);
 				if (ok) {
 					ray.maxt = rec.t;
 				}
@@ -829,8 +855,8 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		return N.dot(scattered.direction) > 0.f;
 	}
 	else {
-		
-		float peta = mat.param;
+		// TODO
+        float peta = 1.55f;//mat.param;
 		float eta = peta;
 
 		vec3 V = direction;
@@ -893,107 +919,221 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 
 vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 {
-	HitRecord rec;
-	int hitIndex = -1;
-	int index = 0;
-	rayCount++;
-	// get closest hit
-	for (auto& sphere : scene.spheres)
-	{
-		//Material& mat = scene.materials[index];
-		//if (mat.type != Material::METAL) {
-			if (sphere.hit(ray, rec))
-			{
-				//ray.maxt = rec.point.z;
-				ray.maxt = rec.t;
-				hitIndex = index;
-			}
-		//}
-		++index;
-	}
-	
-	for (auto& mesh : scene.meshes)
-	{
-		Material& mat = scene.materials[0];
-		//if (mat.type != Material::METAL) {
-		if (mesh.hit(ray, rec))
-		{
-			//ray.maxt = rec.point.z;
-			ray.maxt = rec.t;
-			hitIndex = 0;
-		}
-		//}
-		++index;
-	}
+    vec3 accumulator = vec3(0.0f);
+    vec3 emission(1.0f);
+    
+    
+    bool stop = false;
+    
+    for (int level = 0; level < depth; ++level)
+    {
 
-	if (hitIndex >= 0)
-	{
-		vec3 N = rec.normal;
-		Material& mat = scene.materials[hitIndex];
-		vec3 attenuation;
-		vec3 emission(0.f, 0.f, 0.f);
-		Ray scattered;
-		
-		
-		bool inShadow = false;
-		if (mat.type == Material::LAMBERT && -N.z > 0.f)
-		{
-			/*rayCount++;
-			HitRecord shadowRec;
-			Ray shadowRay = {rec.point, vec3(0.f,0.f,-1.f), 0.001f, FLT_MAX };
-			for (auto& sphere : scene.spheres)
-			{
-				if (sphere.hit(shadowRay, shadowRec))
-				{
-					inShadow = true;
-					break;
-				}
-			}*/
-			
-			const float sunSize = 0.53f;
-			const float sunAngularDiameterCos = cos(sunSize*M_PI / 180.0);
-			const float solidAngle = 1e-5f*1000.f *19000.f*0.01f;
-			
-			vec3 sunSampleDir = getConeSample(vec3(0.f, 0.f, -1.f), 1.f - sunAngularDiameterCos);
+        // 1. intersect scene
+        HitRecord rec;
+        int hitIndex = -1;
+        int index = 0;
+        rayCount++;
+        
+        // get closest hit
+        for (auto& sphere : scene.spheres)
+        {
+            //Material& mat = scene.materials[index];
+            //if (mat.type != Material::METAL) {
+                if (sphere.hit(ray, rec))
+                {
+                    //ray.maxt = rec.point.z;
+                    ray.maxt = rec.t;
+                    hitIndex = index;
+                }
+            //}
+            ++index;
+        }
+        
+        for (auto& mesh : scene.meshes)
+        {
+            //Material& mat = scene.materials[0];
+            //if (mat.type != Material::METAL) {
+            if (mesh.hit(ray, rec))
+            {
+                //ray.maxt = rec.point.z;
+                ray.maxt = rec.t;
+                hitIndex = 0;
+            }
+            //}
+            ++index;
+        }
 
-			const float sunLight = N.dot(sunSampleDir);
-			if (sunLight > 0.f && !inShadow) {
-				emission = vec3(mat.r, mat.g, mat.b)*M_1_PI * sunLight*solidAngle;
-			}
-		}
+        if (hitIndex >= 0)
+        {
+             // get position and normal at the intersection point
+            vec3 P = rec.point;
+            vec3 N = rec.normal;
+            Material& mat = scene.materials[hitIndex];
 
-		float pdf;
-		if (depth < 10 && scatter(mat, rec.point, ray.direction, rec.normal, scattered, attenuation, pdf))
-		{
-			// recurse depending on material
-			return emission + attenuation * color(scattered, scene, depth + 1, rayCount);
-		}
-		else // fake emissive
-			return emission;
-	}
-	else {
-		// terminal ray: ambient sky light
-		vec3 dir = ray.direction;
-		float t = 0.5f * (dir.y + 1.0f);
+            // compute surface lighting, and calc indirect lighting ray
+            //Ray scattered;
+            float pdf;
+            vec3 attenuation(1.f);
+            if (scatter(mat, P, ray.direction, N, ray/*scattered*/, attenuation, pdf))
+            {
+                // recurse depending on material
+                //vec3 indirect = color(scattered, scene, depth + 1, rayCount);
+                
+                // final lighting
+                //return emission + attenuation * indirect;
+                
+            }
+            emission = emission * attenuation;
+            
+            bool inShadow = false;
+            if (mat.type == Material::LAMBERT && -N.z > 0.f)
+            {
+                //rayCount++;
+                //HitRecord shadowRec;
+                //Ray shadowRay = {rec.point, vec3(0.f,0.f,-1.f), 0.001f, FLT_MAX };
+                //for (auto& sphere : scene.spheres)
+                //{
+                //    if (sphere.hit(shadowRay, shadowRec))
+                //    {
+                //        inShadow = true;
+                //        break;
+                //    }
+                //}
+                
+                // compute direct lighting
+                const float sunSize = 0.53f;
+                const float sunAngularDiameterCos = cos(sunSize*M_PI / 180.0);
+                const float solidAngle = 1e-5f*1000.f *19000.f*0.01f;
+                
+                vec3 sunSampleDir = getConeSample(vec3(0.f, 0.f, -1.f), 1.f - sunAngularDiameterCos);
+                vec3 direct(0.0f);
+                const float sunLight = N.dot(sunSampleDir);
+                if (sunLight > 0.f && !inShadow) {
+                    direct = vec3(mat.r, mat.g, mat.b)*M_1_PI * sunLight*solidAngle;
+                }
+                //emission += direct;
+                accumulator += emission * direct;
+            }
+        }
+        // if nothing found, return background color
+        else {
+            // ambient sky light
+            vec3 dir = ray.direction;
+            float t = 0.5f * (dir.y + 1.0f);
 
-		return vec3(1.0f, 1.0f, 1.0f)*(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
-	}
+            vec3 skylight = vec3(1.0f, 1.0f, 1.0f)*(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
 
-	return vec3(0.0f, 0.0f, 0.0f);
+            accumulator += emission * skylight;
+            break;
+        }
+    }
+    
+    return accumulator;
 }
 
 // ---
 
+void errorCallback(int error, const char* description)
+{
+    printf("GLFW Error %d : %s\n", error, description );
+}
+
 int main(void)
 {
 	// initialize ---
+    const int width = 1280, height = 720;
+    
     Framebuffer fb;
-    fb.create(1280, 720);
+    fb.create(width, height);
     
     Scene scene;
 
-    // Load mesh
+#if !ONE_SHOT
+    GLFWwindow* m_window;
+    glfwSetErrorCallback(errorCallback);
+    if (glfwInit() != GLFW_TRUE)
+        throw std::runtime_error("Could not init GLFW");
+    // note: MSAA is pointless here since we are not rasterizing polygons to the backbuffer
+    //glfwWindowHint(GLFW_SAMPLES, MSAA);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    #ifdef _WIN32
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
+    #else
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    #endif
+    // Why Etna : allessandro volta is italian, volta, tesla... -> Etna
+    m_window = glfwCreateWindow(width, height, "Etna", NULL, NULL);
+    if (m_window == NULL) {
+        glfwTerminate();
+        return -1;
+    }
+    /*glfwSetWindowUserPointer(m_window, this);
+    glfwSetKeyCallback(m_window, key_callback);
+    glfwSetMouseButtonCallback(m_window, mouse_button_callback);
+    glfwSetCursorPosCallback(m_window, cursor_position_callback);
+    glfwSetScrollCallback(m_window, wheel_callback);*/
+    glfwMakeContextCurrent(m_window);
+    #ifdef _WIN32
+    // Initialise GLEW
+    glewExperimental = true; // NÈcessaire dans le profil de base
+    if (glewInit() != GLEW_OK) {
+        glfwTerminate();
+        throw std::runtime_error("Could not init GLEW");
+    }
+    glfwSwapInterval(0);
+    #endif
     
+    // Determine GLSL version of this context.
+    //  We'll use this info to generate a GLSL shader source string
+    //  with the proper version preprocessor string prepended.
+    float  glLanguageVersion;
+    sscanf((char *)glGetString(GL_SHADING_LANGUAGE_VERSION), "%f", &glLanguageVersion);
+    GLuint version = 150;//(GLuint)(100.f * glLanguageVersion);
+    Shader::SetVersionString(version);
+    
+    Shader m_copyShader;
+
+    GLuint m_fakeVAO;
+    GLuint m_fboID[2];
+    GLuint m_depthID;
+    GLuint m_textureID[2];                            // ID of the texture used for rendering
+    int m_currentTexture = 0;
+    GLuint m_whiteTextureID;
+    
+    // INIT COPY SHADER
+    m_copyShader.loadVertexShader("data/shaders/postprocess.vs");
+    m_copyShader.loadFragmentShader("data/shaders/copy.fs");
+    m_copyShader.createProgram(Shader::ATTRIBUTE_LESS);
+    
+    glGenFramebuffers(2, m_fboID);
+    glGenTextures(2, m_textureID);
+    for (int i = 0; i < 2; i++) {
+        glBindTexture(GL_TEXTURE_2D, m_textureID[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_textureID[i], 0);
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        assert(status == GL_FRAMEBUFFER_COMPLETE);
+    }
+    glGenVertexArrays(1, &m_fakeVAO);
+    glBindVertexArray(m_fakeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisableVertexAttribArray(0);
+    glBindVertexArray(0);
+#endif
+    
+    scene.camera.position = float3(0.f, 0.f, 0.f);
+    scene.camera.initialize(60.f, 0.1f, 100.f, fb.width, fb.height);
+    scene.camera.lookAt(float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 1.f), float3(0.0f, 1.0f, 0.0f));
+    
+    // Load mesh
+    /*
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -1039,23 +1179,20 @@ int main(void)
     objMesh.grid = new RegularGrid(objMesh.bounds);
     objMesh.grid->construct(objMesh.vertices, objMesh.indices);
     scene.meshes.emplace_back(std::move(objMesh));
+    */
     //scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
     
 
-	
-	scene.camera.position = float3(0.f, 0.f, 0.f);
-	scene.camera.initialize(60.f, 0.1f, 100.f, fb.width, fb.height);
-    scene.camera.lookAt(float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 1.f), float3(0.0f, 1.0f, 0.0f));
-
     srand(2 ^ 17 - 1);
     
-	/*scene.spheres.reserve(10);
+	scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
-	}*/
+	}
 
 	scene.materials.reserve(10);
-	for (int i = 0; i < 10; i++) {
+    scene.materials.emplace_back(Material{ 1.f, 1.f, 1.f, Material::LAMBERT });
+	for (int i = 1; i < 10; i++) {
 		int id = Material::LAMBERT;
 		float param = 0.0f;
 		if (i == 7) {
@@ -1071,13 +1208,44 @@ int main(void)
 				param = 0.0f;
 			}
 		}
-		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), id, param });
+		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), (float)id/*, param*/ });
 	}
 
-	// main loop ---
+#define USE_GLSL
+#ifdef USE_GLSL
+    Shader m_pathTracingShader;
+    m_pathTracingShader.loadVertexShader("data/shaders/postprocess.vs");
+    m_pathTracingShader.loadFragmentShader("data/shaders/pathtracing.fs");
+    m_pathTracingShader.createProgram(Shader::ATTRIBUTE_LESS);
 
-	srand(2 ^ 24 - 1);
+    GLuint spheresTexture;
+    glGenTextures(1, &spheresTexture);
+    glBindTexture(GL_TEXTURE_2D, spheresTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.spheres.data());
+    GLuint materialsTexture;
+    glGenTextures(1, &materialsTexture);
+    glBindTexture(GL_TEXTURE_2D, materialsTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.spheres.data());
+#else
+#endif
     
+	// main loop ---
+    
+    srand(2 ^ 24 - 1);
+    
+#if !ONE_SHOT
+    int samples = 0;
+    do {
+        glfwPollEvents();
+#endif
+    
+        samples++;
+        int m_nextTexture = m_currentTexture ^ 1;
+        
 #ifdef _WIN32
 	LARGE_INTEGER t1, t2;
 	QueryPerformanceCounter(&t1);
@@ -1085,7 +1253,9 @@ int main(void)
     uint64_t t1 = mach_absolute_time();
 #endif
     
-	uint64_t totalRayCount = 0;
+    uint64_t totalRayCount = 0;
+#ifndef USE_GLSL
+	
 	Color* colorBuffer = (Color*)fb.colorBuffer;
 	//for (int j = fb.height - 1; j >= 0; j--)
 
@@ -1093,6 +1263,8 @@ int main(void)
 	const int numTilesW = fb.width / TILESIZE;
 	const int numTilesH = fb.height / TILESIZE;
 
+    float3* accum = (float3*)fb.accumulationBuffer;
+    
 	for (int th = 0; th < numTilesH; th++)
 	{
 		const int ja = TILESIZE * th;
@@ -1117,20 +1289,47 @@ int main(void)
 						//float sx = 0.25f*(s % 4), sy = 0.25f*(s / 4);
 						Ray ray = scene.camera.generateRay(float(pixel.x) + sx*nextFloat(0.f, 1.f), float(pixel.y) + sy*nextFloat(0.f, 1.f));
 
-						color += scene.color(ray, scene, 0, totalRayCount);
+						(*accum) += scene.color(ray, scene, 10, totalRayCount);
 					}
-					color *= (1.f / float(numSamples));
+					(*accum) *= (1.f / float(numSamples));
+                    
+                    
+                    color = (*accum)*(1.f / float(samples));
+                    accum++;
 #else
 					Ray ray = scene.camera.generateRay(i, j);
 					color += scene.color(ray, scene, 0);
 #endif
-
-					pixel.color.fromLinear(color.x, color.y, color.z);
+					pixel.color.fromLinear(color.z, color.y, color.x);
+                    
 					*buffer++ = pixel.color;
 				}
 			}
 		}
 	}
+#else
+        auto program = m_pathTracingShader.getProgram();
+        glUseProgram(program);
+        glUniform3fv(glGetUniformLocation(program, "u_CameraPosition"), 1, &scene.camera.position.x);
+        glUniform3fv(glGetUniformLocation(program, "u_CameraLowerLeftCorner"), 1, &scene.camera.lowerLeftCorner.x);
+        glUniform3fv(glGetUniformLocation(program, "u_CameraHorizontal"), 1, &scene.camera.horizontal.x);
+        glUniform3fv(glGetUniformLocation(program, "u_CameraVertical"), 1, &scene.camera.vertical.x);
+        glUniform1i(glGetUniformLocation(program, "u_Depth"), 10);
+
+        
+        glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[m_currentTexture]);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, materialsTexture);
+        glUniform1i(glGetUniformLocation(program, "u_MaterialsTexture"), 2);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, spheresTexture);
+        glUniform1i(glGetUniformLocation(program, "u_SpheresTexture"), 1);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_textureID[m_nextTexture]);
+        
+        glBindVertexArray(m_fakeVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#endif
 
 #ifdef _WIN32
 	QueryPerformanceCounter(&t2);
@@ -1145,12 +1344,15 @@ int main(void)
     double seconds = (double)((t2-t1) * timebase.numer / timebase.denom) / 1000000000.0;
 #endif
     char buffer[128];
-	sprintf(buffer, "%.2fms (%.1f FPS) %.1fMrays/sec %.2fMRays/frame\n", seconds*1000.f, 1.0f / seconds, totalRayCount / seconds * 1.0e-6f, totalRayCount * 1.0e-6f);
+	sprintf(buffer, "sample [%d] %.2fms (%.1f FPS) %.1fMrays/sec %.2fMRays/frame\n", samples, seconds*1000.f, 1.0f / seconds, totalRayCount / seconds * 1.0e-6f, totalRayCount * 1.0e-6f);
 #ifdef _WIN32
 	OutputDebugStringA(buffer);
 #else
     printf("%s", buffer);
 #endif
+    
+    
+#if ONE_SHOT
 	for (int b = 0; b < 0; b++) {
 		for (int j = 1; j < fb.height; j++)
 		{
@@ -1196,7 +1398,42 @@ int main(void)
 	fwrite(&header, sizeof(header), 1, tgaFile);
 	fwrite(fb.colorBuffer, fb.width*fb.height*4, 1, tgaFile);
 	fclose(tgaFile);
+#else
+        glFinish();
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        
+        program = m_copyShader.getProgram();
+        glUseProgram(program);
+        glBindTexture(GL_TEXTURE_2D, m_textureID[m_currentTexture]);
+        
+#ifdef USE_GLSL
+        //glBindFramebuffer(GL_FRAMEBUFFER, m_nextTexture);
+        auto loc = glGetUniformLocation(program, "u_InvNumSamples");
+        glUniform1f(loc, 1.0f/(float)samples);
+#else
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, fb.colorBuffer);
+#endif
 
+        glBindVertexArray(m_fakeVAO);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        
+        m_currentTexture = m_nextTexture;
+        
+        glfwSwapBuffers(m_window);
+        
+    } while (glfwGetKey(m_window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(m_window) == 0);
+    
+    m_copyShader.destroyProgram();
+    
+    glDeleteVertexArrays(1, &m_fakeVAO);
+    //glDeleteBuffers(1, &m_fboID);
+    //glDeleteTextures(1, &m_depthID);
+    glDeleteFramebuffers(2, m_fboID);
+    glDeleteTextures(2, m_textureID);
+    
+    glfwTerminate();
+#endif
+    
 	// free resources
 	fb.destroy();
 
