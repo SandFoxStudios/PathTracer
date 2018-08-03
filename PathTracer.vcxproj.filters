@@ -13,10 +13,22 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Fichiers sources\shaders">
+      <UniqueIdentifier>{66ba008c-97dd-4449-9b52-88c4f39daa10}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fichiers sources\libs">
+      <UniqueIdentifier>{5958230d-a102-4733-993a-2cc81f932b4e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Fichiers sources\common">
+      <UniqueIdentifier>{43afb284-ad2a-434f-b3f8-489bb09ef281}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="PathTracer.cpp">
       <Filter>Fichiers sources</Filter>
+    </ClCompile>
+    <ClCompile Include="Shader.cpp">
+      <Filter>Fichiers sources\common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -26,5 +38,25 @@
     <ClInclude Include="Framebuffer.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
+    <ClInclude Include="libs\TGA.h">
+      <Filter>Fichiers sources\libs</Filter>
+    </ClInclude>
+    <ClInclude Include="libs\tiny_obj_loader.h">
+      <Filter>Fichiers sources\libs</Filter>
+    </ClInclude>
+    <ClInclude Include="Shader.h">
+      <Filter>Fichiers sources\common</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="data\shaders\copy.fs">
+      <Filter>Fichiers sources\shaders</Filter>
+    </None>
+    <None Include="data\shaders\pathtracing.fs">
+      <Filter>Fichiers sources\shaders</Filter>
+    </None>
+    <None Include="data\shaders\postprocess.vs">
+      <Filter>Fichiers sources\shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

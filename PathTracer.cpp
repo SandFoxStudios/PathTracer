@@ -24,16 +24,18 @@
 #if ONE_SHOT
 #include "libs/TGA.h"
 #else
-#include "GLFW/glfw3.h"
 #if defined(_WIN32)
 #include <GL/glew.h>
 #include <GL/GL.h>
 #pragma comment(lib, "opengl32.lib")
+#pragma comment(lib, "glfw3.lib")
+#pragma comment(lib, "glew32.lib")
 #elif defined(__APPLE__)
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
 #endif
+#include "GLFW/glfw3.h"
 #endif
 
 #include "Framebuffer.h"
@@ -316,8 +318,8 @@ struct RegularGrid
                     vmax[q] = -halfExtent[q] - v;    // -NJMP-
                 }
             }
-            if(dot(normal,vmin) > 0.0f) return false;    // -NJMP-
-            if(dot(normal,vmax) < 0.0f) return false;    // -NJMP-
+            if(dot(n, vmin) > 0.0f) return false;    // -NJMP-
+            if(dot(n, vmax) < 0.0f) return false;    // -NJMP-
 
             content.push_back(indices);
             return true;
@@ -1182,9 +1184,10 @@ int main(void)
     */
     //scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
     
-
+#ifndef _WIN32
     srand(2 ^ 17 - 1);
-    
+#endif
+
 	scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
@@ -1211,8 +1214,8 @@ int main(void)
 		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), (float)id/*, param*/ });
 	}
 
-#define USE_GLSL
-#ifdef USE_GLSL
+//#define USE_GLSL
+#if defined(USE_GLSL)
     Shader m_pathTracingShader;
     m_pathTracingShader.loadVertexShader("data/shaders/postprocess.vs");
     m_pathTracingShader.loadFragmentShader("data/shaders/pathtracing.fs");
@@ -1229,7 +1232,7 @@ int main(void)
     glBindTexture(GL_TEXTURE_2D, materialsTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.spheres.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.materials.data());
 #else
 #endif
     
@@ -1254,7 +1257,8 @@ int main(void)
 #endif
     
     uint64_t totalRayCount = 0;
-#ifndef USE_GLSL
+	GLuint program;
+#if !defined(USE_GLSL)
 	
 	Color* colorBuffer = (Color*)fb.colorBuffer;
 	//for (int j = fb.height - 1; j >= 0; j--)
@@ -1308,7 +1312,7 @@ int main(void)
 		}
 	}
 #else
-        auto program = m_pathTracingShader.getProgram();
+        program = m_pathTracingShader.getProgram();
         glUseProgram(program);
         glUniform3fv(glGetUniformLocation(program, "u_CameraPosition"), 1, &scene.camera.position.x);
         glUniform3fv(glGetUniformLocation(program, "u_CameraLowerLeftCorner"), 1, &scene.camera.lowerLeftCorner.x);
@@ -1347,9 +1351,8 @@ int main(void)
 	sprintf(buffer, "sample [%d] %.2fms (%.1f FPS) %.1fMrays/sec %.2fMRays/frame\n", samples, seconds*1000.f, 1.0f / seconds, totalRayCount / seconds * 1.0e-6f, totalRayCount * 1.0e-6f);
 #ifdef _WIN32
 	OutputDebugStringA(buffer);
-#else
-    printf("%s", buffer);
 #endif
+    printf("%s", buffer);
     
     
 #if ONE_SHOT
@@ -1406,7 +1409,7 @@ int main(void)
         glUseProgram(program);
         glBindTexture(GL_TEXTURE_2D, m_textureID[m_currentTexture]);
         
-#ifdef USE_GLSL
+#if defined(USE_GLSL)
         //glBindFramebuffer(GL_FRAMEBUFFER, m_nextTexture);
         auto loc = glGetUniformLocation(program, "u_InvNumSamples");
         glUniform1f(loc, 1.0f/(float)samples);
