@@ -819,8 +819,8 @@ vec3 getConeSample(const vec3& dir, float extent)
 
 bool scatter(const Material& mat, const vec3& position, const vec3& direction, const vec3& N, Ray& scattered, vec3& attenuation, float& pdf)
 {
-	scattered.origin = position;
-	scattered.mint = 0.001f; 
+	scattered.origin = position + N*0.001f;
+	scattered.mint = 0.00f; 
 	scattered.maxt = FLT_MAX;
 
 	float NdotL = -N.z;
@@ -835,12 +835,12 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		// BRDF
 		NdotL = N.dot(scattered.direction);
 		
-		attenuation = vec3(mat.r, mat.g, mat.b) *M_1_PI;// *pdf);
+		attenuation = vec3(mat.r, mat.g, mat.b);// M_1_PI;// *pdf);
 		
 		//scattered.origin += N*0.001f;
 		return true;
 	}
-	else if (mat.type == Material::METAL) 
+	/*else if (mat.type == Material::METAL) 
 	{	
 		vec3 V = direction;
 		//V.normalize();
@@ -915,7 +915,7 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		}
 
 		return true;
-	}
+	}*/
 	return false;
 }
 
@@ -976,16 +976,19 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
             //Ray scattered;
             float pdf;
             vec3 attenuation(1.f);
-            if (scatter(mat, P, ray.direction, N, ray/*scattered*/, attenuation, pdf))
+#if 1
+            if (scatter(mat, P, ray.direction, N, ray, attenuation, pdf))
             {
                 // recurse depending on material
                 //vec3 indirect = color(scattered, scene, depth + 1, rayCount);
                 
                 // final lighting
                 //return emission + attenuation * indirect;
-                
+				//ray.origin = vec3(-1000.0, -1000.0, -1000.0);
+				//ray.direction = normalize(vec3(-1000.0, -1000.0, -1000.0));
             }
-            emission = emission * attenuation;
+
+			emission = emission * attenuation;
             
             bool inShadow = false;
             if (mat.type == Material::LAMBERT && -N.z > 0.f)
@@ -1003,19 +1006,20 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
                 //}
                 
                 // compute direct lighting
-                const float sunSize = 0.53f;
+                /*const float sunSize = 0.53f;
                 const float sunAngularDiameterCos = cos(sunSize*M_PI / 180.0);
-                const float solidAngle = 1e-5f*1000.f *19000.f*0.01f;
+                const float sunSolidAngle = 1e-5f*1000.f *19000.f*0.01f;
                 
                 vec3 sunSampleDir = getConeSample(vec3(0.f, 0.f, -1.f), 1.f - sunAngularDiameterCos);
                 vec3 direct(0.0f);
                 const float sunLight = N.dot(sunSampleDir);
                 if (sunLight > 0.f && !inShadow) {
-                    direct = vec3(mat.r, mat.g, mat.b)*M_1_PI * sunLight*solidAngle;
+                    direct = vec3(mat.r, mat.g, mat.b)*M_1_PI * sunLight*sunSolidAngle;
                 }
                 //emission += direct;
-                accumulator += emission * direct;
+                accumulator += emission * direct;*/
             }
+#endif
         }
         // if nothing found, return background color
         else {
@@ -1023,9 +1027,9 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
             vec3 dir = ray.direction;
             float t = 0.5f * (dir.y + 1.0f);
 
-            vec3 skylight = vec3(1.0f, 1.0f, 1.0f)*(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
+            vec3 skylight = vec3(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
 
-            accumulator += emission * skylight;
+			accumulator += emission * skylight;
             break;
         }
     }
@@ -1117,11 +1121,13 @@ int main(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
+        //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
         glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[i]);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_textureID[i], 0);
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         assert(status == GL_FRAMEBUFFER_COMPLETE);
+		//glClear(GL_COLOR_BUFFER_BIT);
     }
     glGenVertexArrays(1, &m_fakeVAO);
     glBindVertexArray(m_fakeVAO);
@@ -1194,8 +1200,8 @@ int main(void)
 	}
 
 	scene.materials.reserve(10);
-    scene.materials.emplace_back(Material{ 1.f, 1.f, 1.f, Material::LAMBERT });
-	for (int i = 1; i < 10; i++) {
+    //scene.materials.emplace_back(Material{ 1.f, 1.f, 1.f, Material::LAMBERT });
+	for (int i = 0; i < 10; i++) {
 		int id = Material::LAMBERT;
 		float param = 0.0f;
 		if (i == 7) {
@@ -1214,7 +1220,7 @@ int main(void)
 		scene.materials.emplace_back(Material{ nextFloat(0.0f, 1.f), nextFloat(0.0f, 1.f), nextFloat(0.f, 1.f), (float)id/*, param*/ });
 	}
 
-//#define USE_GLSL
+#define USE_GLSL
 #if defined(USE_GLSL)
     Shader m_pathTracingShader;
     m_pathTracingShader.loadVertexShader("data/shaders/postprocess.vs");
@@ -1283,7 +1289,7 @@ int main(void)
 				{
                     uint16_t pi = (i+ia), pj = (j+ja);
 					Pixel pixel{ pi, pj, {0, 0, 0, 255} };
-					vec3 color(0.0f, 0.0f, 0.0f);
+					
 #if 1
 					const int numSamples = 1;// 256;
 					for (int s = 0; s < numSamples; s++)
@@ -1291,14 +1297,13 @@ int main(void)
 						// stratify / jitter
 						float sx = 1.f, sy = 1.f;
 						//float sx = 0.25f*(s % 4), sy = 0.25f*(s / 4);
-						Ray ray = scene.camera.generateRay(float(pixel.x) + sx*nextFloat(0.f, 1.f), float(pixel.y) + sy*nextFloat(0.f, 1.f));
+						Ray ray = scene.camera.generateRay(float(pixel.x) /*+ sx*nextFloat(0.f, 1.f)*/, float(pixel.y) /*+ sy*nextFloat(0.f, 1.f)*/);
 
 						(*accum) += scene.color(ray, scene, 10, totalRayCount);
 					}
 					(*accum) *= (1.f / float(numSamples));
                     
-                    
-                    color = (*accum)*(1.f / float(samples));
+                    vec3 color = (*accum)*(1.f / float(samples));
                     accum++;
 #else
 					Ray ray = scene.camera.generateRay(i, j);
@@ -1319,7 +1324,9 @@ int main(void)
         glUniform3fv(glGetUniformLocation(program, "u_CameraHorizontal"), 1, &scene.camera.horizontal.x);
         glUniform3fv(glGetUniformLocation(program, "u_CameraVertical"), 1, &scene.camera.vertical.x);
         glUniform1i(glGetUniformLocation(program, "u_Depth"), 10);
-
+		auto loc = glGetUniformLocation(program, "u_Samples");
+		float invSamples = (float)samples;
+		glUniform1f(loc, invSamples);
         
         glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[m_currentTexture]);
         glActiveTexture(GL_TEXTURE2);
@@ -1330,6 +1337,7 @@ int main(void)
         glUniform1i(glGetUniformLocation(program, "u_SpheresTexture"), 1);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_textureID[m_nextTexture]);
+		glUniform1i(glGetUniformLocation(program, "u_Texture"), 0);
         
         glBindVertexArray(m_fakeVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -1407,12 +1415,15 @@ int main(void)
         
         program = m_copyShader.getProgram();
         glUseProgram(program);
+		glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, m_textureID[m_currentTexture]);
-        
+		glUniform1i(glGetUniformLocation(program, "u_Texture"), 0);
+
 #if defined(USE_GLSL)
         //glBindFramebuffer(GL_FRAMEBUFFER, m_nextTexture);
-        auto loc = glGetUniformLocation(program, "u_InvNumSamples");
-        glUniform1f(loc, 1.0f/(float)samples);
+        loc = glGetUniformLocation(program, "u_InvNumSamples");
+		invSamples = (float)samples;
+        glUniform1f(loc, invSamples);
 #else
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, fb.colorBuffer);
 #endif
@@ -1420,9 +1431,12 @@ int main(void)
         glBindVertexArray(m_fakeVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         
-        m_currentTexture = m_nextTexture;
+		m_currentTexture ^= 1;// m_nextTexture;
+
+		GLenum error = glGetError();
+		assert(error == GL_NO_ERROR);
         
-        glfwSwapBuffers(m_window);
+		glfwSwapBuffers(m_window);
         
     } while (glfwGetKey(m_window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(m_window) == 0);
     

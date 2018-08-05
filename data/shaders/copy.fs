@@ -1,5 +1,5 @@
 
-precision mediump float;
+precision highp float;
 
 in vec2 v_TexCoords;
 
@@ -11,9 +11,9 @@ out vec4 FragColor;
 
 void main()
 {
-    vec3 source = /*vec3(u_InvNumSamples) **/ texture(u_Texture, v_TexCoords).rgb;
+	vec2 ij = gl_FragCoord.xy / textureSize(u_Texture, 0).xy;
+    vec3 source = texture(u_Texture, ij).rgb / vec3(u_InvNumSamples);
 	//source /= (source + vec3(1.0));
-	source = clamp(source, 0.0, 1.0);
-    source = pow(source, vec3(0.454545));
+	source = pow(source, vec3(0.454545));
     FragColor = vec4(source, 1.0);
 }
