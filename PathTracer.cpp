@@ -835,7 +835,7 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		// BRDF
 		NdotL = N.dot(scattered.direction);
 		
-		attenuation = vec3(mat.r, mat.g, mat.b);// M_1_PI;// *pdf);
+		attenuation = vec3(mat.r, mat.g, mat.b)*2.0f;// M_1_PI;// *pdf);
 		
 		//scattered.origin += N*0.001f;
 		return true;
@@ -1091,6 +1091,12 @@ int main(void)
     glfwSwapInterval(0);
     #endif
     
+	glClearColor(0.f, 0.f, 0.f, 1.f);
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_DEPTH_TEST);
+	glDepthMask(GL_FALSE);
+
     // Determine GLSL version of this context.
     //  We'll use this info to generate a GLSL shader source string
     //  with the proper version preprocessor string prepended.
@@ -1121,13 +1127,14 @@ int main(void)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        //glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, width, height);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
         glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[i]);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_textureID[i], 0);
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         assert(status == GL_FRAMEBUFFER_COMPLETE);
-		//glClear(GL_COLOR_BUFFER_BIT);
+		
+		glClear(GL_COLOR_BUFFER_BIT);
     }
     glGenVertexArrays(1, &m_fakeVAO);
     glBindVertexArray(m_fakeVAO);
@@ -1435,7 +1442,7 @@ int main(void)
 
 		GLenum error = glGetError();
 		assert(error == GL_NO_ERROR);
-        
+		//::Sleep(1000);
 		glfwSwapBuffers(m_window);
         
     } while (glfwGetKey(m_window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(m_window) == 0);
