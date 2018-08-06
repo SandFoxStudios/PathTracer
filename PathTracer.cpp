@@ -68,6 +68,12 @@ inline float dot(const float3& lhs, const float3& rhs) { return lhs.dot(rhs); }
 inline float3 normalize(const float3& v) { return v*(1.f/v.length()); }
 typedef float3 vec3;
 
+struct Vertex
+{
+    float3 position;
+    float3 normal;
+};
+
 struct Ray
 {
 	static const float epsilon;
@@ -92,10 +98,10 @@ struct HitRecord
 	vec3 normal; int material;
 	vec3 uv;
 
-	bool hit(Ray& ray, const vec3& a, const vec3& b, const vec3& c, const vec3& na, const vec3& nb, const vec3& nc)
+	bool hit(Ray& ray, const Vertex& a, const Vertex& b, const Vertex& c)//, const vec3& na, const vec3& nb, const vec3& nc)
 	{
-		vec3 e1 = b - a;
-		vec3 e2 = c - a;
+		vec3 e1 = b.position - a.position;
+		vec3 e2 = c.position - a.position;
 
 		// Left Handed, reverse determinant
 		//float det = -n.dot(ray.direction);
@@ -106,7 +112,7 @@ struct HitRecord
 		//if (abs(det) < 0.0001f)
 			return false;
         
-		vec3 ap = (ray.origin - a);
+		vec3 ap = (ray.origin - a.position);
         // backface culling
 		//float temp = n.dot(ap);
 		//if (temp < 0.f)
@@ -136,7 +142,7 @@ struct HitRecord
             t = temp;
 			point = ray(temp);
             uv.y = u*ood; uv.z = v*ood; uv.x = 1.f - uv.y - uv.z;
-            normal = na * uv.x + nb * uv.y + nc * uv.z;
+            normal = a.normal * uv.x + b.normal * uv.y + c.normal * uv.z;
             //normal = e1.cross(e2);
             normal.normalize();
 
@@ -335,7 +341,7 @@ struct RegularGrid
     ~RegularGrid() {
         delete[] cells;
     }
-    RegularGrid(const AABB& bound, int subdiv = 16)
+    RegularGrid(const AABB& bound, int subdiv = 1)
     {
         root = bound;
         subdivisions = subdiv;
@@ -441,14 +447,14 @@ struct RegularGrid
             float deltaty = extents.y / diff.y;
             float deltatz = extents.z / diff.z;
             
-            for (;;)
+            /*for (;;)
             {
                 int index = (k*subdivisions*subdivisions) + j*subdivisions + i;
                 if (cells[index].content.size()) {
                     bool hasHit = false;
                     int hitCount = 0;
                     for (const int* indices : cells[index].content) {
-                        bool didHit = rec.hit(ray, vertices[indices[0]], vertices[indices[1]], vertices[indices[2]]
+                        bool didHit = rec.hit(ray, positions[indices[0]], positions[indices[1]], positions[indices[2]]
                                               , normals[indices[0]], normals[indices[1]], normals[indices[2]]);
                         if (didHit) {
                             hasHit |= didHit;
@@ -475,7 +481,7 @@ struct RegularGrid
                     tz += deltatz;
                     k += dk;
                 }
-            }
+            }*/
         }
         return false;
     }
@@ -483,14 +489,18 @@ struct RegularGrid
 
 struct Mesh
 {
-	std::vector<float3> vertices;
-	std::vector<float3> normals;
+    std::vector<Vertex> vertices;
+	//std::vector<float3> positions;
+	//std::vector<float3> normals;
 	std::vector<int> indices;
 	AABB bounds;
     RegularGrid* grid;
 
     Mesh() : grid(nullptr) {}
-    Mesh(Mesh&& m) : vertices(std::move(m.vertices)), normals(std::move(m.normals)), indices(std::move(m.indices)), bounds(std::move(m.bounds)) { grid = nullptr; std::swap(grid, m.grid); }
+    Mesh(Mesh&& m) : vertices(std::move(m.vertices))/*, normals(std::move(m.normals))*/, indices(std::move(m.indices)), bounds(std::move(m.bounds)) {
+        grid = nullptr;
+        std::swap(grid, m.grid);
+    }
     ~Mesh() {
         if (grid)
             delete grid;
@@ -498,9 +508,9 @@ struct Mesh
     
 	bool hit(const Ray& ray, HitRecord &rec, const int a, const int b, const int c) const
 	{
-		const vec3& va = vertices[a];
-		const vec3 e1 = vertices[b] - va;
-		const vec3 e2 = vertices[c] - va;
+		const vec3& va = vertices[a].position;
+		const vec3 e1 = vertices[b].position - va;
+		const vec3 e2 = vertices[c].position - va;
 		
 		// Left Handed, reverse determinant
 		//float det = -n.dot(ray.direction);
@@ -541,7 +551,7 @@ struct Mesh
 			rec.t = temp;
 			rec.point = ray(temp);
 			rec.uv.y = u*ood; rec.uv.z = v*ood; rec.uv.x = 1.f - rec.uv.y - rec.uv.z;
-			rec.normal = normals[a] * rec.uv.x + normals[b] * rec.uv.y + normals[c] * rec.uv.z;
+			rec.normal = vertices[a].normal * rec.uv.x + vertices[b].normal * rec.uv.y + vertices[c].normal * rec.uv.z;
 			rec.normal.normalize();
 			return true;
 		}
@@ -553,15 +563,15 @@ struct Mesh
 	{
 		bool hasHit = false;
 		//return bounds.hit(ray, rec);
-#if 0//DONT_USE_GRID
+#if 1//DONT_USE_GRID
         if (bounds.test(ray))
 		{
 			int numTri = indices.size() / 3;
 			for (int i = 0; i < numTri; i++)
 			{
 				//bool ok = hit(ray, rec, indices[i * 3], indices[i * 3 + 1], indices[i * 3 + 2]);
-				bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]],
-                                  normals[indices[i * 3]], normals[indices[i * 3 + 1]], normals[indices[i * 3 + 2]]);
+                bool ok = rec.hit(ray, vertices[indices[i * 3]], vertices[indices[i * 3 + 1]], vertices[indices[i * 3 + 2]]);
+                //, normals[indices[i * 3]], normals[indices[i * 3 + 1]], normals[indices[i * 3 + 2]]);
 				if (ok) {
 					ray.maxt = rec.t;
 				}
@@ -835,7 +845,7 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 		// BRDF
 		NdotL = N.dot(scattered.direction);
 		
-		attenuation = vec3(mat.r, mat.g, mat.b)*2.0f;// M_1_PI;// *pdf);
+		attenuation = vec3(mat.r, mat.g, mat.b);// M_1_PI;// *pdf);
 		
 		//scattered.origin += N*0.001f;
 		return true;
@@ -922,7 +932,7 @@ bool scatter(const Material& mat, const vec3& position, const vec3& direction, c
 vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 {
     vec3 accumulator = vec3(0.0f);
-    vec3 emission(1.0f);
+    vec3 energy(1.0f);
     
     
     bool stop = false;
@@ -988,7 +998,7 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
 				//ray.direction = normalize(vec3(-1000.0, -1000.0, -1000.0));
             }
 
-			emission = emission * attenuation;
+			energy = energy * attenuation;
             
             bool inShadow = false;
             if (mat.type == Material::LAMBERT && -N.z > 0.f)
@@ -1024,15 +1034,19 @@ vec3 Scene::color(Ray& ray, Scene& scene, int depth, uint64_t &rayCount)
         // if nothing found, return background color
         else {
             // ambient sky light
-            vec3 dir = ray.direction;
-            float t = 0.5f * (dir.y + 1.0f);
 
-            vec3 skylight = vec3(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
 
-			accumulator += emission * skylight;
             break;
         }
+        
+        if ((energy.x+energy.y+energy.z) == 0.f)
+            break;
     }
+    
+    vec3 dir = ray.direction;
+    float t = 0.5f * (dir.y + 1.0f);
+    vec3 skylight = vec3(1.0 - t) +vec3(1.f, 0.7f, 0.5f) * (t);
+    accumulator += energy * skylight;
     
     return accumulator;
 }
@@ -1061,8 +1075,8 @@ int main(void)
         throw std::runtime_error("Could not init GLFW");
     // note: MSAA is pointless here since we are not rasterizing polygons to the backbuffer
     //glfwWindowHint(GLFW_SAMPLES, MSAA);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     #ifdef _WIN32
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
     #else
@@ -1102,7 +1116,7 @@ int main(void)
     //  with the proper version preprocessor string prepended.
     float  glLanguageVersion;
     sscanf((char *)glGetString(GL_SHADING_LANGUAGE_VERSION), "%f", &glLanguageVersion);
-    GLuint version = 150;//(GLuint)(100.f * glLanguageVersion);
+    GLuint version = (GLuint)(100.f * glLanguageVersion);
     Shader::SetVersionString(version);
     
     Shader m_copyShader;
@@ -1148,7 +1162,7 @@ int main(void)
     scene.camera.lookAt(float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 1.f), float3(0.0f, 1.0f, 0.0f));
     
     // Load mesh
-    /*
+    
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
@@ -1159,14 +1173,15 @@ int main(void)
     objMesh.bounds.min = vec3(FLT_MAX);
     objMesh.bounds.max = vec3(-FLT_MAX);
     objMesh.vertices.reserve(attrib.vertices.size() / 3);
-	objMesh.normals.reserve(attrib.vertices.size() / 3);
+    //objMesh.positions.reserve(attrib.vertices.size() / 3);
+	//objMesh.normals.reserve(attrib.vertices.size() / 3);
     const float scale = 1.0f;
     const vec3 translation(0.0f, 0.0f, 3.f);
     for (int i = 0; i < attrib.vertices.size(); i+=3) {
         const float x = attrib.vertices[i]*scale;
         const float y = attrib.vertices[i+1]*scale;
         const float z = attrib.vertices[i+2]*scale + translation.z;
-        objMesh.vertices.emplace_back(vec3(x, y, z));
+        //objMesh.positions.emplace_back(vec3(x, y, z));
         if (x < objMesh.bounds.min.x) objMesh.bounds.min.x = x;
         if (y < objMesh.bounds.min.y) objMesh.bounds.min.y = y;
         if (z < objMesh.bounds.min.z) objMesh.bounds.min.z = z;
@@ -1176,7 +1191,8 @@ int main(void)
 		const float nx = attrib.normals[i];
 		const float ny = attrib.normals[i + 1];
 		const float nz = attrib.normals[i + 2];
-		objMesh.normals.emplace_back(vec3(nx, ny, nz));
+		//objMesh.normals.emplace_back(vec3(nx, ny, nz));
+        objMesh.vertices.emplace_back(Vertex{{x, y, z}, {nx, ny, nz}});
     }
     for (auto &shape : shapes) {
         for (int indices = 0; indices < shape.mesh.indices.size(); indices+=3) {
@@ -1191,20 +1207,20 @@ int main(void)
         //    objMesh.indices.push_back(index.vertex_index);
         //}
     }
-    objMesh.grid = new RegularGrid(objMesh.bounds);
-    objMesh.grid->construct(objMesh.vertices, objMesh.indices);
+    //objMesh.grid = new RegularGrid(objMesh.bounds);
+    //objMesh.grid->construct(objMesh.vertices, objMesh.indices);
     scene.meshes.emplace_back(std::move(objMesh));
-    */
+    
     //scene.meshes.emplace_back(Mesh{ { vec3{-1.f, -1.f, 5.f}, vec3{ 0.f, 1.f, 5.f }, vec3{ 1.f, -1.f, 5.f } }, { 0, 1, 2 }, { vec3{ -1.f, -1.f, 5.f }, vec3{ 1.f, 1.f, 5.f } } });
     
 #ifndef _WIN32
     srand(2 ^ 17 - 1);
 #endif
 
-	scene.spheres.reserve(10);
+	/*scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
-	}
+	}*/
 
 	scene.materials.reserve(10);
     //scene.materials.emplace_back(Material{ 1.f, 1.f, 1.f, Material::LAMBERT });
@@ -1240,12 +1256,39 @@ int main(void)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.spheres.data());
+    
     GLuint materialsTexture;
     glGenTextures(1, &materialsTexture);
     glBindTexture(GL_TEXTURE_2D, materialsTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 10, 1, 0, GL_RGBA, GL_FLOAT, scene.materials.data());
+    
+    GLuint indicesTexture;
+    glGenTextures(1, &indicesTexture);
+    glBindTexture(GL_TEXTURE_RECTANGLE, indicesTexture);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGB32I, 1024, 1, 0, GL_RGB_INTEGER, GL_INT, scene.meshes[0].indices.data());
+    //glTexSubImage2D(GL_TEXTURE_RECTANGLE, 0, 0, 0, scene.meshes[0].indices.size(), 1, GL_RGB_INTEGER, GL_UNSIGNED_INT, scene.meshes[0].indices.data());
+
+    GLenum error = glGetError();
+    assert(error == GL_NO_ERROR);
+    
+    GLuint verticesTexture;
+    glGenTextures(1, &verticesTexture);
+    glBindTexture(GL_TEXTURE_RECTANGLE, verticesTexture);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGB32F, 1024, 1, 0, GL_RGB, GL_FLOAT, scene.meshes[0].vertices.data());
+    //glTexSubImage2D(GL_TEXTURE_RECTANGLE, 0, 0, 0, scene.meshes[0].vertices.size()*2, 1, GL_RGB, GL_FLOAT, scene.meshes[0].vertices.data());
+
+    error = glGetError();
+    assert(error == GL_NO_ERROR);
 #else
 #endif
     
@@ -1335,10 +1378,19 @@ int main(void)
 		float invSamples = (float)samples;
 		glUniform1f(loc, invSamples);
         
+        loc = glGetUniformLocation(program, "u_NumTriangles");
+        glUniform1i(loc, scene.meshes[0].indices.size()/3);
+        
         glBindFramebuffer(GL_FRAMEBUFFER, m_fboID[m_currentTexture]);
-        glActiveTexture(GL_TEXTURE2);
+        glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, materialsTexture);
-        glUniform1i(glGetUniformLocation(program, "u_MaterialsTexture"), 2);
+        glUniform1i(glGetUniformLocation(program, "u_MaterialsTexture"), 4);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_RECTANGLE, indicesTexture);
+        glUniform1i(glGetUniformLocation(program, "u_IndicesTexture"), 3);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_RECTANGLE, verticesTexture);
+        glUniform1i(glGetUniformLocation(program, "u_VerticesTexture"), 2);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, spheresTexture);
         glUniform1i(glGetUniformLocation(program, "u_SpheresTexture"), 1);
@@ -1348,6 +1400,7 @@ int main(void)
         
         glBindVertexArray(m_fakeVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glFinish();
 #endif
 
 #ifdef _WIN32
@@ -1417,7 +1470,6 @@ int main(void)
 	fwrite(fb.colorBuffer, fb.width*fb.height*4, 1, tgaFile);
 	fclose(tgaFile);
 #else
-        glFinish();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         
         program = m_copyShader.getProgram();
@@ -1440,12 +1492,19 @@ int main(void)
         
 		m_currentTexture ^= 1;// m_nextTexture;
 
-		GLenum error = glGetError();
-		assert(error == GL_NO_ERROR);
+		//GLenum error = glGetError();
+		//assert(error == GL_NO_ERROR);
 		//::Sleep(1000);
 		glfwSwapBuffers(m_window);
         
     } while (glfwGetKey(m_window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(m_window) == 0);
+   
+#if defined(USE_GLSL)
+    glDeleteTextures(1, &verticesTexture);
+    glDeleteTextures(1, &indicesTexture);
+    glDeleteTextures(1, &materialsTexture);
+    glDeleteTextures(1, &spheresTexture);
+#endif
     
     m_copyShader.destroyProgram();
     

@@ -10,8 +10,11 @@ uniform vec3 u_CameraVertical;
 
 uniform sampler2D u_Texture;
 uniform sampler2D u_SpheresTexture;
+uniform sampler2DRect u_VerticesTexture;
+uniform isampler2DRect u_IndicesTexture;
 uniform sampler2D u_MaterialsTexture;
 
+uniform int u_NumTriangles;
 uniform int u_Depth;
 uniform float u_Samples;
 
@@ -74,11 +77,12 @@ vec3 randomHemisphere()
 const float uvFactor = (1.001 / 10.0);
 const float sunSolidAngle = 1e-5*1000.0 *19000.0*0.01;
 const float maxt = 1.0e38;
+const float mint = 0.00;
 
 float IntersectWorld(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal, inout float recT)
 {
-	float mint = 0.00;	
 	float hitIndex = -1.0;
+    
 	for (int obj = 0; obj < 10; ++obj)
     {
 		float id = float(obj);
@@ -111,8 +115,64 @@ float IntersectWorld(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal
             }*/
         }
     }
+    
 	return hitIndex;
 }
+
+const float texFactor = 1.0;// / 1024.0;
+
+float IntersectMesh(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal, inout float recT)
+{
+    float hitIndex = -1.0;
+    
+    for (int i = 0; i < u_NumTriangles; i++)
+    {
+        ivec3 indices = texelFetch(u_IndicesTexture, ivec2(i, 0)).stp;
+        ivec3 vind = ivec3(indices*2);
+        vec3 a = texelFetch(u_VerticesTexture, ivec2(vind.s, 0)).xyz;
+        vec3 b = texelFetch(u_VerticesTexture, ivec2(vind.t, 0)).xyz;
+        vec3 c = texelFetch(u_VerticesTexture, ivec2(vind.p, 0)).xyz;
+        vec3 e1 = b - a;
+        vec3 e2 = c - a;
+
+        // Left Handed, reverse determinant
+        //float det = -n.dot(ray.direction);
+        vec3 q = cross(rd, e2);
+        float det = dot(e1, q);
+        
+        if (det >= 0.0001)
+        {
+            vec3 ap = (ro - a);
+
+            float u = dot(ap, q);
+            vec3 r = cross(ap, e1);
+            float v = dot(rd, r);
+            
+            if (u >= 0.0 && u <= det && v >= 0.0 && (u + v) <= det)
+            {
+                vec3 uv;
+                ivec3 nind = vind+ivec3(1);
+                vec3 na = texelFetch(u_VerticesTexture, ivec2(nind.s, 0)).xyz;
+                vec3 nb = texelFetch(u_VerticesTexture, ivec2(nind.t, 0)).xyz;
+                vec3 nc = texelFetch(u_VerticesTexture, ivec2(nind.p, 0)).xyz;
+                
+                float ood = 1.0 / det;
+                float temp = dot(e2, r) * ood;
+                if (temp > mint && temp < recT) {
+                    recT = temp;
+                    recPoint = ro + temp*rd;
+                    uv.y = u*ood; uv.z = v*ood; uv.x = 1.f - uv.y - uv.z;
+                    recNormal = normalize(na * uv.x + nb * uv.y + nc * uv.z);
+                   
+                    hitIndex = 0.0;
+                }
+            }
+        }
+    }
+    
+    return hitIndex;
+}
+
 
 vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex, vec3 P, vec3 N)
 {
@@ -125,7 +185,7 @@ vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex,
 		// test glossy plastic ---
 		vec3 specularity = vec3(0.04);
 		float smoothness = 0.5;
-		float alpha =32.0;// pow(1024.0, smoothness*smoothness);//15.0;
+		float alpha = 32.0;// pow(1024.0, smoothness*smoothness);//15.0;
 		vec3 albedo = material.bgr;//vec3(0.8);
 		
 		vec3 R = reflect(rd, N);
@@ -252,12 +312,11 @@ void main()
         vec3 recPoint;
         vec3 recNormal;
 
-		float hitIndex = IntersectWorld(ro, rd, recPoint, recNormal, recT);
-       
+		//float hitIndex = IntersectWorld(ro, rd, recPoint, recNormal, recT);
+        float hitIndex = IntersectMesh(ro, rd, recPoint, recNormal, recT);
+        
 	    if (hitIndex>=0) {
-
-		Shade(energy, ro, rd, hitIndex, recPoint, recNormal);
-
+            Shade(energy, ro, rd, hitIndex, recPoint, recNormal);
 		}
 				
 		if (!any(bvec3(energy)) || hitIndex<0.0) {
@@ -268,8 +327,8 @@ void main()
 	// ambient
 	float t = 0.5 * (rd.y + 1.0);
     vec3 skyLight = vec3(1.0 - t) + vec3(0.5, 0.7, 1.0) * (t);
-	accum += energy*skyLight;
-		    
+	accum += energy * skyLight;
+
     //vec3 source = vec3(accum) + texture(u_Texture, ij).rgb;
 	// incremental averaging
 	vec3 source = mix(texture(u_Texture, ij).rgb, accum, 1.0/u_Samples);
