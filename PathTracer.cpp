@@ -1271,7 +1271,7 @@ int main(void)
     glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGB32I, 1024, 1, 0, GL_RGB_INTEGER, GL_INT, scene.meshes[0].indices.data());
+    glTexImage2D(GL_TEXTURE_RECTANGLE, 0, GL_RGB32UI, 1024, 1, 0, GL_RGB_INTEGER, GL_UNSIGNED_INT, scene.meshes[0].indices.data());
     //glTexSubImage2D(GL_TEXTURE_RECTANGLE, 0, 0, 0, scene.meshes[0].indices.size(), 1, GL_RGB_INTEGER, GL_UNSIGNED_INT, scene.meshes[0].indices.data());
 
     GLenum error = glGetError();

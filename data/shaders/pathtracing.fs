@@ -11,7 +11,7 @@ uniform vec3 u_CameraVertical;
 uniform sampler2D u_Texture;
 uniform sampler2D u_SpheresTexture;
 uniform sampler2DRect u_VerticesTexture;
-uniform isampler2DRect u_IndicesTexture;
+uniform usampler2DRect u_IndicesTexture;
 uniform sampler2D u_MaterialsTexture;
 
 uniform int u_NumTriangles;
@@ -51,7 +51,7 @@ mat3 GetTangentSpace(vec3 normal)
     // Generate vectors
     vec3 tangent = normalize(cross(normal, helper));
     vec3 binormal = normalize(cross(normal, tangent));
-    return mat3(tangent, binormal, normal);
+    return mat3(tangent, normal, binormal);
 }
 
 vec3 randomUnitVector()
@@ -64,14 +64,15 @@ vec3 randomUnitVector()
 	return vec3(x, y, z);
 }
 
-vec3 randomHemisphere()
+vec3 randomHemisphere(float r1)
 {
-	float cosTheta = rand01();
+    float cosTheta = r1;
 	float sinTheta = sqrt(max(0.0, 1.0 - cosTheta*cosTheta));
 	float phi = rand01() * 2.0 * M_PI;
 	return vec3(cos(phi) * sinTheta,
-				sin(phi) * sinTheta,
-				cosTheta);
+				cosTheta,
+                sin(phi) * sinTheta
+				);
 }
 
 const float uvFactor = (1.001 / 10.0);
@@ -127,31 +128,30 @@ float IntersectMesh(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal,
     
     for (int i = 0; i < u_NumTriangles; i++)
     {
-        ivec3 indices = texelFetch(u_IndicesTexture, ivec2(i, 0)).stp;
-        ivec3 vind = ivec3(indices*2);
+        uvec3 indices = texelFetch(u_IndicesTexture, ivec2(i, 0)).stp;
+        uvec3 vind = uvec3(indices*2);
         vec3 a = texelFetch(u_VerticesTexture, ivec2(vind.s, 0)).xyz;
         vec3 b = texelFetch(u_VerticesTexture, ivec2(vind.t, 0)).xyz;
         vec3 c = texelFetch(u_VerticesTexture, ivec2(vind.p, 0)).xyz;
         vec3 e1 = b - a;
         vec3 e2 = c - a;
 
-        // Left Handed, reverse determinant
-        //float det = -n.dot(ray.direction);
         vec3 q = cross(rd, e2);
         float det = dot(e1, q);
         
         if (det >= 0.0001)
         {
             vec3 ap = (ro - a);
-
-            float u = dot(ap, q);
             vec3 r = cross(ap, e1);
+            
+            float u = dot(ap, q);
             float v = dot(rd, r);
+            
             
             if (u >= 0.0 && u <= det && v >= 0.0 && (u + v) <= det)
             {
                 vec3 uv;
-                ivec3 nind = vind+ivec3(1);
+                uvec3 nind = vind+ivec3(1);
                 vec3 na = texelFetch(u_VerticesTexture, ivec2(nind.s, 0)).xyz;
                 vec3 nb = texelFetch(u_VerticesTexture, ivec2(nind.t, 0)).xyz;
                 vec3 nc = texelFetch(u_VerticesTexture, ivec2(nind.p, 0)).xyz;
@@ -161,9 +161,9 @@ float IntersectMesh(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal,
                 if (temp > mint && temp < recT) {
                     recT = temp;
                     recPoint = ro + temp*rd;
-                    uv.y = u*ood; uv.z = v*ood; uv.x = 1.f - uv.y - uv.z;
-                    recNormal = normalize(na * uv.x + nb * uv.y + nc * uv.z);
-                   
+                    uv.x = u*ood; uv.y = v*ood; uv.z = 1.f - uv.x - uv.y;
+                    recNormal = normalize(na * uv.z + nb * uv.x + nc * uv.y);
+                    //recNormal = normalize(cross(e1, e2));
                     hitIndex = 0.0;
                 }
             }
@@ -173,15 +173,71 @@ float IntersectMesh(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal,
     return hitIndex;
 }
 
+float FurnaceHitTest(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal, inout float recT)
+{
+    float hitIndex = -1.0;
+    
+    vec3 center = vec3(0.0, 0.0, 1.41);
+    float radius = 0.5;
+    float invRadius = 1.0 / radius;
+    vec3 to = ro - center;
+    
+    float B = -dot(to, rd);
+    float C = dot(to, to) - radius*radius;
+    float discriminant = B*B - C;
+    
+    if (discriminant > 0.0) {
+        float rootDiscriminant = sqrt(discriminant);
+        float temp = (B - rootDiscriminant);
+        temp = temp > 0.0 ? temp : (B + rootDiscriminant);
+        //float temp2 = (B + rootDiscriminant);
+        if (temp > mint && temp < recT) {
+            recPoint = ro + temp*rd;
+            recNormal = (recPoint - center)*invRadius;
+            recT = temp;
+            hitIndex = 100;
+        }
+        // this is required for transparent dielectric
+        /*else if (temp2 > mint && temp2 < recT) {
+         recPoint = ro + temp2*rd;
+         recNormal = normalize(recPoint - center); recT = temp2;
+         hitIndex = id;
+         }*/
+    }
+    
+    return hitIndex;
+}
 
 vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex, vec3 P, vec3 N)
 {
 	if (hitIndex >= 0.0) 
 	{
-		vec4 material = texture(u_MaterialsTexture, vec2(uvFactor*hitIndex, 0.0));
+        vec4 material = texture(u_MaterialsTexture, vec2(uvFactor*hitIndex, 0.0));
+        material = vec4(0.5);
 			
 		ro = P + N*0.001;
 
+        // white furnace Monte-Carlo test
+        /*vec3 albedo = material.rgb / M_PI;
+        vec3 indirect = vec3(0.0);
+        float recT = maxt;
+        int count = 256;
+        float pdf = 1.0 / (2.0*M_PI);
+        for (int n = 0; n < count; n++)
+        {
+            float r1 = rand01();
+            rd = (GetTangentSpace(N)*randomHemisphere(r1));
+            float p = r1/pdf;
+            if (FurnaceTest(ro, rd, P, N, recT) >= 0)
+                indirect += vec3(p, 0.0, 0.0);
+            else {
+                float t = 0.5 * (rd.y + 1.0);
+                vec3 skyLight = vec3(1.0 - t) + vec3(0.5, 0.7, 1.0) * (t);
+                indirect += vec3(p) * skyLight;
+            }
+        }
+        indirect /= vec3(float(count));
+        attenuation *= (indirect) * albedo;*/
 		// test glossy plastic ---
 		vec3 specularity = vec3(0.04);
 		float smoothness = 0.5;
@@ -192,19 +248,20 @@ vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex,
 		// perfect reflection
 		//rd = R;		
 		//attenuation *= albedo;		
-		//return albedo * max(-N.z/*dot(N, rd)*/, 0.0);
+		//return albedo * max(-N.z, 0.0);//dot(N, rd)
 		
-		// Lambert ...			
-		//rd = (GetTangentSpace(N)*randomHemisphere());
-		rd = normalize(N + randomUnitVector());		
+		// Lambert ...
+        float r1 = rand01();
+		rd = (GetTangentSpace(N)*randomHemisphere(r1));
+		//rd = normalize(N + randomUnitVector());
 		
-		// ...uniform BRDF
-		//vec3 lambert = albedo * 2.0 * clamp(dot(N, rd), 0.0, 1.0);
+		// ...uniform BRDF (pdf = 1.0 / 2PI)
+        vec3 lambert = albedo * 2.0 * clamp(dot(N, rd), 0.0, 1.0);
 		// ...importance BRDF (pdf = cos@ / PI)
-		vec3 lambert = albedo;		
+		//vec3 lambert = (albedo);
 		attenuation *= lambert;
 		
-		rd = mix(R, rd, smoothness);
+		//rd = mix(R, rd, smoothness);
 		//ro = P + rd*0.001;
 
 		// modified-Phong uniform BRDF
@@ -314,6 +371,7 @@ void main()
 
 		//float hitIndex = IntersectWorld(ro, rd, recPoint, recNormal, recT);
         float hitIndex = IntersectMesh(ro, rd, recPoint, recNormal, recT);
+        //float hitIndex = FurnaceHitTest(ro, rd, recPoint, recNormal, recT);
         
 	    if (hitIndex>=0) {
             Shade(energy, ro, rd, hitIndex, recPoint, recNormal);
@@ -327,7 +385,7 @@ void main()
 	// ambient
 	float t = 0.5 * (rd.y + 1.0);
     vec3 skyLight = vec3(1.0 - t) + vec3(0.5, 0.7, 1.0) * (t);
-	accum += energy * skyLight;
+    accum += energy * skyLight;
 
     //vec3 source = vec3(accum) + texture(u_Texture, ij).rgb;
 	// incremental averaging
