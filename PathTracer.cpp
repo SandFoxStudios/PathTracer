@@ -1217,10 +1217,10 @@ int main(void)
     srand(2 ^ 17 - 1);
 #endif
 
-	/*scene.spheres.reserve(10);
+	scene.spheres.reserve(10);
 	for (int i = 0; i < 10; i++) {
 		scene.spheres.emplace_back(Sphere{ { nextFloat(-3.f, +3.f), nextFloat(-3.f, +3.f), nextFloat(0.5f, +10.f) }, nextFloat(0.1f, 1.f) });
-	}*/
+	}
 
 	scene.materials.reserve(10);
     //scene.materials.emplace_back(Material{ 1.f, 1.f, 1.f, Material::LAMBERT });

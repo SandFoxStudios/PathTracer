@@ -64,9 +64,9 @@ vec3 randomUnitVector()
 	return vec3(x, y, z);
 }
 
-vec3 randomHemisphere(float r1)
+vec3 randomHemisphere(float r1, float distrib)
 {
-    float cosTheta = r1;
+    float cosTheta = pow(r1, 1.0 / (distrib+1.0));
 	float sinTheta = sqrt(max(0.0, 1.0 - cosTheta*cosTheta));
 	float phi = rand01() * 2.0 * M_PI;
 	return vec3(cos(phi) * sinTheta,
@@ -208,14 +208,25 @@ float FurnaceHitTest(vec3 ro, vec3 rd, inout vec3 recPoint, inout vec3 recNormal
     return hitIndex;
 }
 
+float saturate(float x) { return clamp(x, 0.0, 1.0); }
+// direct lighting Fresnel/Schlick (technically non metals ?)
+float SphericalGaussianApprox(float CosX, float ModifiedSpecularPower)
+{
+    return exp2(ModifiedSpecularPower * CosX - ModifiedSpecularPower);
+}
+#define OneOnLN2_x6 8.656170 // == 1/ln(2) * 6   (6 is SpecularPower of 5 + 1)
+vec3 FresnelSchlick(vec3 SpecularColor, vec3 E, vec3 H)
+{
+    // In this case SphericalGaussianApprox(1.0f - saturate(dot(E, H)), OneOnLN2_x6) is equal to exp2(-OneOnLN2_x6 * x)
+    return SpecularColor + (vec3(1.0) - SpecularColor) * exp2(-OneOnLN2_x6 * saturate(dot(E, H)));
+}
+
 vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex, vec3 P, vec3 N)
 {
 	if (hitIndex >= 0.0) 
 	{
         vec4 material = texture(u_MaterialsTexture, vec2(uvFactor*hitIndex, 0.0));
         material = vec4(0.5);
-			
-		ro = P + N*0.001;
 
         // white furnace Monte-Carlo test
         /*vec3 albedo = material.rgb / M_PI;
@@ -239,35 +250,46 @@ vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex,
         indirect /= vec3(float(count));
         attenuation *= (indirect) * albedo;*/
 		// test glossy plastic ---
-		vec3 specularity = vec3(0.04);
-		float smoothness = 0.5;
-		float alpha = 32.0;// pow(1024.0, smoothness*smoothness);//15.0;
-		vec3 albedo = material.bgr;//vec3(0.8);
+		vec3 specularity = vec3(0.94);
+        const float roughness = 0.0;
+		const float smoothness = 1.0 - roughness;
+        const float alpha = pow(1024.0, smoothness*smoothness);//15.0;
+		vec3 albedo = material.bgr;
 		
 		vec3 R = reflect(rd, N);
 		// perfect reflection
-		//rd = R;		
-		//attenuation *= albedo;		
-		//return albedo * max(-N.z, 0.0);//dot(N, rd)
+		//rd = R;
+        //ro = P + rd*0.0001;
+		//attenuation *= albedo;
+        //return vec3(0.0);
+        //return albedo * max(-N.z, 0.0);//dot(N, rd)
 		
-		// Lambert ...
         float r1 = rand01();
-		rd = (GetTangentSpace(N)*randomHemisphere(r1));
-		//rd = normalize(N + randomUnitVector());
-		
+        
+		// Lambert ...
+        //float distrib = 0.0; // 0 if uniform, 1 if cosine-weighted
+        //rd = (GetTangentSpace(N)*randomHemisphere(r1, distrib));
+        //rd = normalize(N + randomUnitVector());
+		//rd = mix(R, rd, roughness);
+        //ro = P + rd*0.0001;
 		// ...uniform BRDF (pdf = 1.0 / 2PI)
-        vec3 lambert = albedo * 2.0 * clamp(dot(N, rd), 0.0, 1.0);
+        //vec3 lambert = albedo * 2.0 * clamp(dot(N, rd), 0.0, 1.0);
 		// ...importance BRDF (pdf = cos@ / PI)
 		//vec3 lambert = (albedo);
-		attenuation *= lambert;
-		
-		//rd = mix(R, rd, smoothness);
-		//ro = P + rd*0.001;
+		//attenuation *= lambert;
 
-		// modified-Phong uniform BRDF
-		//vec3 diffuse = min(vec3(1.0) - specularity, albedo) * 2.0;
-		//vec3 specular = specularity * (alpha + 2.0)/(alpha + 1.0) * pow(max(dot(rd, R), 0.0), alpha);
+        // Phong ...
+        float distrib = alpha;//0.0; // 0 if uniform, alpha if cosine-weighted
+        rd = (GetTangentSpace(R)*randomHemisphere(r1, distrib));
+		// modified-Phong uniform BRDF (pdf = 1.0 / 2PI)
+        //vec3 diffuse = vec3(0.0);//min(vec3(1.0) - specularity, albedo) * 2.0;
+		//vec3 specular = specularity * (alpha + 2.0) * pow(max(dot(rd, R), 0.0), alpha);
 		//attenuation *= (diffuse + specular) * clamp(dot(N, rd), 0.0, 1.0);
+        // modified-Phong uniform BRDF (pdf = ((n+1)/2PI)cos@^n / PI)
+        vec3 diffuse = min(vec3(1.0) - specularity, albedo);
+        float f = (alpha + 2.0)/(alpha+1.0);
+        vec3 specular = FresnelSchlick(specularity, N, rd) * specularity * clamp(dot(N, rd) * f, 0.0, 1.0);
+        attenuation *= (diffuse + specular);
 		
 		// ... with perfect reflection (russian roulette)
 		/*vec3 diffuse = min(vec3(1.0) - specularity, albedo);
@@ -335,7 +357,7 @@ vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex,
 			emission = vec3(0.0);
 		}*/
 			
-		return vec3(0.0);
+		return vec3(r1);
 	}
     else 
 	{
@@ -345,7 +367,7 @@ vec3 Shade(inout vec3 attenuation, inout vec3 ro, inout vec3 rd, float hitIndex,
 		//attenuation = vec3(0.0);
 		
 		// outgoing
-		return skyLight;
+        return vec3(1.0);//skyLight;
     }
 }
 
@@ -362,19 +384,19 @@ void main()
     
     
     vec3 energy = vec3(1.0);
-
+    vec3 prob = vec3(1.0);
     for (int level = 0; level < u_Depth; ++level)
     {
 		float recT = maxt;
         vec3 recPoint;
         vec3 recNormal;
 
-		//float hitIndex = IntersectWorld(ro, rd, recPoint, recNormal, recT);
-        float hitIndex = IntersectMesh(ro, rd, recPoint, recNormal, recT);
         //float hitIndex = FurnaceHitTest(ro, rd, recPoint, recNormal, recT);
+		float hitIndex = IntersectWorld(ro, rd, recPoint, recNormal, recT);
+        //float hitIndex = IntersectMesh(ro, rd, recPoint, recNormal, recT);
         
 	    if (hitIndex>=0) {
-            Shade(energy, ro, rd, hitIndex, recPoint, recNormal);
+            prob = Shade(energy, ro, rd, hitIndex, recPoint, recNormal);
 		}
 				
 		if (!any(bvec3(energy)) || hitIndex<0.0) {
@@ -385,7 +407,7 @@ void main()
 	// ambient
 	float t = 0.5 * (rd.y + 1.0);
     vec3 skyLight = vec3(1.0 - t) + vec3(0.5, 0.7, 1.0) * (t);
-    accum += energy * skyLight;
+    accum += energy * /*prob **/ skyLight;
 
     //vec3 source = vec3(accum) + texture(u_Texture, ij).rgb;
 	// incremental averaging
